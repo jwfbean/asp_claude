@@ -12,19 +12,19 @@ This skill manages MongoDB Atlas Stream Processing (ASP) pipelines using the `sp
 
 Use this path pattern for all sp commands:
 ```bash
-~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp <command>
+~/.claude/plugins/cache/asp-skill/asp/*/tools/sp <command>
 ```
 
 ## Quick Reference
 
 | Action | Command |
 |--------|---------|
-| List workspaces | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp workspaces list` |
-| List processors | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors list` |
-| Start processor | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors start -p <name> --auto` |
-| Stop processor | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors stop -p <name>` |
-| Get stats | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors stats -p <name>` |
-| Tier advice | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors tier-advise -p <name>` |
+| List workspaces | `~/.claude/plugins/cache/asp-skill/asp/*/tools/sp workspaces list` |
+| List processors | `~/.claude/plugins/cache/asp-skill/asp/*/tools/sp processors list` |
+| Start processor | `~/.claude/plugins/cache/asp-skill/asp/*/tools/sp processors start -p <name> --auto` |
+| Stop processor | `~/.claude/plugins/cache/asp-skill/asp/*/tools/sp processors stop -p <name>` |
+| Get stats | `~/.claude/plugins/cache/asp-skill/asp/*/tools/sp processors stats -p <name>` |
+| Tier advice | `~/.claude/plugins/cache/asp-skill/asp/*/tools/sp processors tier-advise -p <name>` |
 
 ## Setup Requirements
 
