@@ -8,34 +8,23 @@ version: 1.0.0
 
 This skill manages MongoDB Atlas Stream Processing (ASP) pipelines using the `sp` CLI tool. Use natural language to create, deploy, monitor, and optimize streaming data workloads.
 
-## Finding the sp Tool
+## Running Commands
 
-The `sp` CLI tool is installed with this plugin. To find it, use:
+Use this path pattern for all sp commands:
 ```bash
-SP_TOOL=$(find ~/.claude/plugins/cache -name "sp" -path "*/asp/*/tools/*" 2>/dev/null | head -1)
+~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp <command>
 ```
-
-Then run commands with `$SP_TOOL`:
-```bash
-$SP_TOOL processors list
-```
-
-**IMPORTANT**: Always find the tool path first before running any sp commands.
 
 ## Quick Reference
 
-First, set the tool path:
-```bash
-SP_TOOL=$(find ~/.claude/plugins/cache -name "sp" -path "*/asp/*/tools/*" 2>/dev/null | head -1)
-```
-
-Then run commands:
-- List workspaces: `$SP_TOOL workspaces list`
-- List processors: `$SP_TOOL processors list`
-- Start processor: `$SP_TOOL processors start -p <name> --auto`
-- Stop processor: `$SP_TOOL processors stop -p <name>`
-- Get stats: `$SP_TOOL processors stats -p <name>`
-- Tier advice: `$SP_TOOL processors tier-advise -p <name>`
+| Action | Command |
+|--------|---------|
+| List workspaces | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp workspaces list` |
+| List processors | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors list` |
+| Start processor | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors start -p <name> --auto` |
+| Stop processor | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors stop -p <name>` |
+| Get stats | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors stats -p <name>` |
+| Tier advice | `~/.claude/plugins/cache/asp-marketplace/asp/*/tools/sp processors tier-advise -p <name>` |
 
 ## Setup Requirements
 
