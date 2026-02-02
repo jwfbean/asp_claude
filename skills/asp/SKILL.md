@@ -76,6 +76,16 @@ Copy from `config.txt.example` and fill in your Atlas API credentials.
 
 ## Creating Processors
 
+**IMPORTANT**: Before creating any processor, consult the official MongoDB ASP examples repo for best practices and valid patterns:
+
+https://github.com/mongodb/ASP_example
+
+This repo contains the latest source/sink configurations, valid pipeline stages, and working examples. Always fetch and review examples from this repo when:
+- Creating new processors
+- Configuring sources (Kafka, Atlas change streams, etc.)
+- Setting up sinks ($merge targets)
+- Using advanced features ($lookup, $function, windowing)
+
 Processors are JSON files defining streaming pipelines:
 
 ```json
@@ -113,6 +123,17 @@ Processors are JSON files defining streaming pipelines:
 - **$window** - Window-based computations
 - **$function** - Custom JavaScript transformations
 - **$merge** - Write to destination
+
+### $source Configuration
+
+**Always consult https://github.com/mongodb/ASP_example for current source configurations.**
+
+Key points:
+- **Kafka sources REQUIRE a `topic` field**
+- **HTTP connections are NOT sources** - they are for lookups/enrichment only
+- Not all connection types are valid sources
+
+Fetch examples from the ASP_example repo before creating processors to ensure correct syntax.
 
 ### IMPORTANT: Invalid Variables
 
@@ -152,6 +173,18 @@ Use `--auto` to let the tool analyze and select the optimal tier.
 3. `sp processors drop -p <name>`
 4. `sp processors create -p <name>`
 5. `sp processors start -p <name> --auto`
+
+## Reference Documentation
+
+The `docs/` directory contains comprehensive guides:
+- **PIPELINE_PATTERNS.md** - Common pipeline patterns and examples
+- **CONNECTION_GUIDE.md** - Connection types and configuration
+- **PROCESSOR_SIZING_GUIDE.md** - Tier selection and sizing
+- **SP_USER_MANUAL.md** - Complete sp CLI reference
+- **ATLAS_STREAM_PROCESSING_PARALLELISM.md** - Parallelism configuration
+- **TESTING_GUIDE.md** - Testing and validation
+
+Consult these docs when building complex processors.
 
 ## Output Format
 

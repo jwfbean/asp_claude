@@ -5,8 +5,8 @@
     "pipeline": [
         {
             "$source": {
-                "connectionName": "http_source",
-                "timeField": { "$dateFromString": { "dateString": "$timestamp" }}
+                "connectionName": "my_kafka_connection",
+                "topic": "my_topic"
             }
         },
         {
