@@ -1,0 +1,255 @@
+---
+# SP Tool Metadata - MongoDB Atlas Stream Processing CLI
+# This file provides structured metadata for AI assistants and automation tools
+
+name: sp
+type: cli-tool
+version: "1.0"
+language: python
+executable: tools/sp/sp
+
+description: |
+  Unified command-line tool for MongoDB Atlas Stream Processing management.
+  Provides declarative configuration, testing, deployment, monitoring, and
+  lifecycle management for stream processors and connections.
+
+working_directory: tools/sp/
+always_cd_to_tools_sp: true  # CRITICAL: Must run from tools/sp/ directory
+
+# Core capabilities of the tool
+capabilities:
+  - processor_creation
+  - processor_deployment
+  - processor_testing
+  - processor_validation
+  - connection_management
+  - performance_monitoring
+  - lifecycle_management
+  - tier_optimization
+  - workspace_management
+  - stats_collection
+
+# Primary documentation files (in order of importance for AI)
+documentation:
+  primary:
+    - tools/sp/PROCESSOR_PATTERNS.md # ⭐ Canonical syntax patterns & examples
+    - docs/SP_UTILITY_SUMMARY.md     # AI-focused quick reference
+    - tools/sp/SP_QUICKREF.md        # Ultra-concise command reference
+    - tools/sp/README.md             # Tool overview
+  detailed:
+    - docs/SP_USER_MANUAL.md         # Comprehensive manual
+    - docs/AI_ASSISTANT_GUIDE.md     # AI workflow guide
+    - docs/TESTING_GUIDE.md          # Testing procedures
+  related:
+    - docs/PROCESSOR_SIZING_GUIDE.md
+    - docs/SP_CONNECTION_TESTING.md
+    - docs/TIER_SELECTION_ALGORITHM.txt
+  examples:
+    - https://github.com/mongodb/ASP_example  # Official example repository
+    
+  best_practices:
+    - "Always test processors before deploying: ./sp processors test -p name"
+    - "Use tier-advise to get recommended tier: ./sp processors tier-advise -p name"
+    - "Monitor with stats: ./sp processors stats --processor name"
+    - "Check DLQ counts in stats to detect errors"
+    - "After starting processor with $merge, verify results: ./sp collections count -c db.collection"
+    - "Complete verification: stats (DLQ check) + collection count (data check)"
+    - "Use --auto flag when starting to wait for STARTED state"
+    - "Follow canonical JSON format: {name, pipeline}"
+    - "Reference PROCESSOR_PATTERNS.md for syntax examples"
+    - "Never use $$NOW directly - use {$currentDate: {}} instead"
+    - "Use connectionName, never hardcode credentials"
+    - "Test simple source+merge first, add complexity incrementally"
+
+# Configuration requirements
+configuration:
+  required_files:
+    - config.txt                     # Atlas API credentials
+  optional_files:
+    - connections/connections.json   # Connection definitions
+  environment_variables:
+    - MONGODB_CONNECTION_STRING      # Optional, for connection testing
+
+# Output format
+output:
+  format: json
+  structured: true
+  ai_parseable: true
+  human_readable: true  # JSON is colorized for humans
+
+# Command structure and patterns
+commands:
+  # Workspace commands
+  workspaces:
+    list:
+      pattern: "./sp workspaces list"
+      description: "List all stream processing workspaces"
+      output: json
+    create:
+      pattern: "./sp workspaces create <name> --cloud-provider <provider> --region <region>"
+      description: "Create a new workspace"
+      output: json
+    delete:
+      pattern: "./sp workspaces delete <name>"
+      description: "Delete a workspace"
+      output: json
+    connections:
+      create:
+        pattern: "./sp workspaces connections create"
+        description: "Create connections from connections.json"
+        output: json
+      list:
+        pattern: "./sp workspaces connections list"
+        description: "List all connections"
+        output: json
+      test:
+        pattern: "./sp workspaces connections test"
+        description: "Test all connections with MongoDB verification"
+        output: json
+
+  # Processor commands  
+  processors:
+    test:
+      pattern: "./sp processors test [-p <processor_name>]"
+      description: "Test and validate processor configurations"
+      output: json
+      before_create: true  # Always run before create
+    create:
+      pattern: "./sp processors create [-p <processor_name>]"
+      description: "Deploy processors to Atlas Stream Processing"
+      output: json
+    list:
+      pattern: "./sp processors list"
+      description: "List all processors with status"
+      output: json
+    stats:
+      pattern: "./sp processors stats [--processor <name>]"
+      description: "Get performance statistics"
+      output: json
+    start:
+      pattern: "./sp processors start [-p <processor_name>] [--auto]"
+      description: "Start processors"
+      output: json
+      options:
+        --auto: "Automatically start after waiting for CREATED state"
+    stop:
+      pattern: "./sp processors stop [-p <processor_name>]"
+      description: "Stop processors"
+      output: json
+    restart:
+      pattern: "./sp processors restart [-p <processor_name>]"
+      description: "Restart processors"
+      output: json
+    drop:
+      pattern: "./sp processors drop <processor_name> | --all"
+      description: "Delete processors"
+      output: json
+      destructive: true
+
+# Workflow patterns for AI assistants
+workflows:
+  create_processor:
+    steps:
+      - action: create_json
+        location: processors/
+        description: "Create processor JSON definition"
+      - action: test
+        command: "cd tools/sp && ./sp processors test -p <name>"
+        description: "Validate configuration"
+      - action: create
+        command: "cd tools/sp && ./sp processors create -p <name>"
+        description: "Deploy processor"
+      - action: verify
+        command: "./sp processors list"
+        description: "Verify deployment"
+      - action: start
+        command: "./sp processors start -p <name> --auto"
+        description: "Start processor (optional)"
+
+  deploy_connections:
+    steps:
+      - action: update_json
+        location: connections/connections.json
+        description: "Update connection definitions"
+      - action: create
+        command: "cd tools/sp && ./sp workspaces connections create"
+        description: "Deploy connections"
+      - action: verify
+        command: "./sp workspaces connections list"
+        description: "Verify deployment"
+
+  monitor_performance:
+    steps:
+      - action: list
+        command: "cd tools/sp && ./sp processors list"
+        description: "Check processor status"
+      - action: stats
+        command: "./sp processors stats"
+        description: "Get performance metrics"
+
+# File structure expectations
+file_structure:
+  skill_directory: tools/sp/
+  skill_files:
+    - sp                    # Main executable
+    - atlas_api.py         # API client library
+    - requirements.txt     # Python dependencies
+    - sp.yaml             # This metadata file
+    - sp-schema.json      # JSON schema
+    - README.md           # Documentation
+    - SP_QUICKREF.md      # Quick reference
+    - examples/           # Example workflows
+  processors:
+    location: processors/
+    pattern: "*.json"
+    format: "JSON with pipeline and options"
+  connections:
+    location: connections/
+    files:
+      - connections.json
+    format: "JSON with connections array"
+  config:
+    location: "./"
+    files:
+      - config.txt
+    format: "KEY=value pairs"
+
+# Dependencies
+dependencies:
+  python_version: ">=3.7"
+  python_modules:
+    - argparse
+    - json
+    - requests
+    - subprocess
+  internal:
+    - atlas_api.py  # Atlas API client module (in same directory)
+
+# AI Assistant Rules
+ai_rules:
+  mandatory:
+    - "Always run from tools/ directory"
+    - "Always test before deploying processors"
+    - "Use sp utility for ALL stream processing operations"
+    - "Never use manual API calls when sp command exists"
+  best_practices:
+    - "Test configurations before deployment"
+    - "Use structured JSON output for automation"
+    - "Verify operations with list/stats commands"
+    - "Follow the create -> test -> deploy -> verify pattern"
+  
+# Error handling
+error_handling:
+  json_output: true
+  exit_codes:
+    0: success
+    1: general_error
+    2: validation_error
+
+# Examples location
+examples:
+  directory: tools/examples/
+  files:
+    - example-workflow.sh
+    - sample-output.json
+    - error-cases.json

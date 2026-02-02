@@ -98,15 +98,15 @@ When helping users:
 1. **`config.txt`** - Atlas API credentials and project configuration
 2. **`connections/`** - External service connection definitions
 3. **`processors/`** - JSON-based stream processor pipeline definitions
-4. **`tools/sp`** - **PRIMARY MANAGEMENT TOOL** - Unified CLI for all stream processing operations
+4. **`tools/sp/sp`** - **PRIMARY MANAGEMENT TOOL** - Unified CLI for all stream processing operations
 
 ### The `sp` Utility - Your Primary Tool
 
-The `sp` utility located in `tools/sp` is the **main command-line interface** for all stream processing operations. **Always use this tool** for creating, managing, and deploying stream processors and connections.
+The `sp` utility located in `tools/sp/sp` is the **main command-line interface** for all stream processing operations. **Always use this tool** for creating, managing, and deploying stream processors and connections.
 
 **Key Features:**
 
-- **Location**: `tools/sp` (executable Python script)
+- **Location**: `tools/sp/sp` (executable Python script)
 - **Auto-config detection**: Automatically finds `config.txt` in project
 - **Unified operations**: Single tool for all stream processing tasks
 - **JSON output**: Structured responses for AI processing
@@ -222,7 +222,7 @@ The `sp` utility located in `tools/sp` is the **main command-line interface** fo
 Atlas Stream Processing provides built-in sample streams like `sample_stream_solar` that are automatically available. These don't need to be defined in connections.json:
 
 - `sample_stream_solar` - Solar energy data for testing
-- Other sample streams may be available (check with `./tools/sp processors list`)
+- Other sample streams may be available (check with `./tools/sp/sp processors list`)
 
 ### Variable Substitution
 
@@ -324,7 +324,7 @@ Use `${VARIABLE_NAME}` to reference values from `config.txt`:
 
 ### Tool Location and Usage
 
-**Location**: `tools/sp` (executable Python script in the tools directory)
+**Location**: `tools/sp/sp` (executable Python script in the tools directory)
 **Working Directory**: Always run from `tools/` directory or use full path
 
 ```bash
@@ -399,14 +399,14 @@ The `sp` utility provides unified management for all stream processing operation
 **When user says "create a processor":**
 
 1. **Create the JSON file** in `processors/` directory
-2. **Run**: `cd tools && ./sp create processors`
+2. **Run**: `cd tools/sp && ./sp create processors`
 3. **Verify**: `./sp list` to check status
 4. **Start if needed**: `./sp start`
 
 **When user says "deploy" or "create connections":**
 
 1. **Update** `connections/connections.json`
-2. **Run**: `cd tools && ./sp create connections`
+2. **Run**: `cd tools/sp && ./sp create connections`
 3. **Verify**: `./sp list` to see connection status
 
 **For monitoring and management:**
@@ -446,8 +446,8 @@ All `sp` commands return structured JSON output for easy AI processing:
 
 1. **Define connections** in `connections/connections.json`
 2. **Create processor JSON** in `processors/your_processor.json`
-3. **Deploy connections**: `cd tools && ./sp create connections`
-4. **Deploy processors**: `cd tools && ./sp create processors`
+3. **Deploy connections**: `cd tools/sp && ./sp create connections`
+4. **Deploy processors**: `cd tools/sp && ./sp create processors`
 5. **Monitor status**: `./sp list`
 6. **View statistics**: `./sp stats`
 7. **Manage lifecycle**: `./sp start/stop/restart`
@@ -514,7 +514,7 @@ cd tools/
 
 **CRITICAL**: Always use the `sp` utility for ALL stream processing operations:
 
-- **DO**: `cd tools && ./sp create processors`
+- **DO**: `cd tools/sp && ./sp create processors`
 - **DON'T**: Manual API calls or other deployment methods
 - **DO**: `./sp list` for status checking
 - **DON'T**: Direct Atlas API status queries

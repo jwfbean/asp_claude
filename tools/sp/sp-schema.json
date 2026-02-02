@@ -1,0 +1,405 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SP - MongoDB Atlas Stream Processing CLI",
+  "description": "Schema definition for the SP command-line tool",
+  "type": "object",
+  "version": "1.0",
+  
+  "tool": {
+    "name": "sp",
+    "path": "tools/sp/sp",
+    "language": "python",
+    "workingDirectory": "tools/sp/",
+    "outputFormat": "json"
+  },
+  
+  "commands": {
+    "workspaces": {
+      "description": "Workspace management commands",
+      "subcommands": {
+        "list": {
+          "description": "List all stream processing workspaces",
+          "usage": "./sp workspaces list",
+          "options": [],
+          "returns": {
+            "type": "json",
+            "schema": {
+              "timestamp": "string (ISO 8601)",
+              "operation": "string",
+              "workspaces": "array"
+            }
+          }
+        },
+        "create": {
+          "description": "Create a new workspace",
+          "usage": "./sp workspaces create <name> --cloud-provider <provider> --region <region>",
+          "parameters": {
+            "name": {
+              "type": "string",
+              "required": true,
+              "description": "Workspace name"
+            }
+          },
+          "options": {
+            "--cloud-provider": {
+              "type": "string",
+              "required": true,
+              "values": ["AWS", "GCP", "AZURE"],
+              "description": "Cloud provider"
+            },
+            "--region": {
+              "type": "string",
+              "required": true,
+              "description": "Cloud region"
+            }
+          },
+          "returns": {
+            "type": "json"
+          }
+        },
+        "delete": {
+          "description": "Delete a workspace",
+          "usage": "./sp workspaces delete <name>",
+          "parameters": {
+            "name": {
+              "type": "string",
+              "required": true,
+              "description": "Workspace name to delete"
+            }
+          },
+          "destructive": true,
+          "returns": {
+            "type": "json"
+          }
+        },
+        "connections": {
+          "description": "Connection management subcommands",
+          "subcommands": {
+            "create": {
+              "description": "Create connections from connections.json",
+              "usage": "./sp workspaces connections create",
+              "inputFiles": ["connections/connections.json"],
+              "returns": {
+                "type": "json",
+                "schema": {
+                  "timestamp": "string",
+                  "operation": "create_connections",
+                  "summary": {
+                    "total": "number",
+                    "success": "number",
+                    "failed": "number"
+                  },
+                  "connections": "array"
+                }
+              }
+            },
+            "list": {
+              "description": "List all connections",
+              "usage": "./sp workspaces connections list",
+              "returns": {
+                "type": "json"
+              }
+            },
+            "test": {
+              "description": "Test connections with MongoDB verification",
+              "usage": "./sp workspaces connections test",
+              "environmentVariables": {
+                "MONGODB_CONNECTION_STRING": {
+                  "required": true,
+                  "description": "MongoDB Atlas connection string for verification"
+                }
+              },
+              "returns": {
+                "type": "json"
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "processors": {
+      "description": "Stream processor management commands",
+      "subcommands": {
+        "test": {
+          "description": "Test and validate processor configurations",
+          "usage": "./sp processors test [-p <processor_name>]",
+          "options": {
+            "-p, --processor": {
+              "type": "string",
+              "required": false,
+              "description": "Specific processor name to test"
+            }
+          },
+          "inputFiles": ["processors/*.json"],
+          "returns": {
+            "type": "json",
+            "schema": {
+              "timestamp": "string",
+              "operation": "test",
+              "summary": {
+                "total": "number",
+                "passed": "number",
+                "failed": "number"
+              },
+              "results": "array"
+            }
+          },
+          "notes": "Always run before deploying processors"
+        },
+        
+        "create": {
+          "description": "Deploy processors to Atlas Stream Processing",
+          "usage": "./sp processors create [-p <processor_name>]",
+          "options": {
+            "-p, --processor": {
+              "type": "string",
+              "required": false,
+              "description": "Specific processor name to create"
+            }
+          },
+          "inputFiles": ["processors/*.json"],
+          "returns": {
+            "type": "json",
+            "schema": {
+              "timestamp": "string",
+              "operation": "create_processors",
+              "summary": {
+                "total": "number",
+                "success": "number",
+                "failed": "number"
+              },
+              "processors": "array"
+            }
+          },
+          "prerequisites": ["test"],
+          "notes": "Run 'test' command first to validate configurations"
+        },
+        
+        "list": {
+          "description": "List all processors with their status",
+          "usage": "./sp processors list",
+          "returns": {
+            "type": "json",
+            "schema": {
+              "timestamp": "string",
+              "operation": "list_processors",
+              "processors": "array"
+            }
+          }
+        },
+        
+        "stats": {
+          "description": "Get performance statistics for processors",
+          "usage": "./sp processors stats [--processor <name>]",
+          "options": {
+            "--processor": {
+              "type": "string",
+              "required": false,
+              "description": "Get stats for specific processor"
+            }
+          },
+          "returns": {
+            "type": "json",
+            "schema": {
+              "timestamp": "string",
+              "operation": "stats",
+              "stats": "array"
+            }
+          }
+        },
+        
+        "start": {
+          "description": "Start processors",
+          "usage": "./sp processors start [-p <processor_name>] [--auto]",
+          "options": {
+            "-p, --processor": {
+              "type": "string",
+              "required": false,
+              "description": "Specific processor to start"
+            },
+            "--auto": {
+              "type": "boolean",
+              "required": false,
+              "description": "Automatically wait for CREATED state before starting"
+            }
+          },
+          "returns": {
+            "type": "json"
+          }
+        },
+        
+        "stop": {
+          "description": "Stop processors",
+          "usage": "./sp processors stop [-p <processor_name>]",
+          "options": {
+            "-p, --processor": {
+              "type": "string",
+              "required": false,
+              "description": "Specific processor to stop"
+            }
+          },
+          "returns": {
+            "type": "json"
+          }
+        },
+        
+        "restart": {
+          "description": "Restart processors",
+          "usage": "./sp processors restart [-p <processor_name>]",
+          "options": {
+            "-p, --processor": {
+              "type": "string",
+              "required": false,
+              "description": "Specific processor to restart"
+            }
+          },
+          "returns": {
+            "type": "json"
+          }
+        },
+        
+        "drop": {
+          "description": "Delete processors (destructive operation)",
+          "usage": "./sp processors drop <processor_name> | --all",
+          "parameters": {
+            "processor_name": {
+              "type": "string",
+              "required": "conditional",
+              "description": "Name of processor to delete (required unless --all is used)"
+            }
+          },
+          "options": {
+            "--all": {
+              "type": "boolean",
+              "required": false,
+              "description": "Delete all processors (use with caution!)",
+              "warning": "This will delete ALL processors in the workspace"
+            }
+          },
+          "destructive": true,
+          "returns": {
+            "type": "json"
+          }
+        }
+      }
+    }
+  },
+  
+  "configuration": {
+    "configFile": {
+      "path": "config.txt",
+      "required": true,
+      "format": "KEY=value",
+      "keys": {
+        "PUBLIC_KEY": {
+          "required": true,
+          "description": "Atlas API public key"
+        },
+        "PRIVATE_KEY": {
+          "required": true,
+          "description": "Atlas API private key"
+        },
+        "PROJECT_ID": {
+          "required": true,
+          "description": "Atlas project ID"
+        }
+      }
+    },
+    
+    "processorFiles": {
+      "location": "processors/",
+      "pattern": "*.json",
+      "schema": {
+        "pipeline": {
+          "type": "array",
+          "required": true,
+          "description": "Stream processing pipeline stages"
+        },
+        "options": {
+          "type": "object",
+          "required": false,
+          "description": "Processor configuration options"
+        }
+      }
+    },
+    
+    "connectionFiles": {
+      "location": "connections/",
+      "file": "connections.json",
+      "schema": {
+        "connections": {
+          "type": "array",
+          "items": {
+            "name": "string",
+            "type": "string (https|cluster)",
+            "url": "string (for https)",
+            "clusterName": "string (for cluster)",
+            "dbRoleToExecute": "object (for cluster)"
+          }
+        }
+      }
+    }
+  },
+  
+  "workflows": {
+    "createProcessor": {
+      "description": "Complete workflow to create and deploy a processor",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Create processor JSON",
+          "location": "processors/processor_name.json"
+        },
+        {
+          "step": 2,
+          "action": "Test configuration",
+          "command": "cd tools/sp && ./sp processors test -p processor_name"
+        },
+        {
+          "step": 3,
+          "action": "Deploy processor",
+          "command": "./sp processors create -p processor_name"
+        },
+        {
+          "step": 4,
+          "action": "Verify deployment",
+          "command": "./sp processors list"
+        },
+        {
+          "step": 5,
+          "action": "Start processor (optional)",
+          "command": "./sp processors start -p processor_name --auto"
+        }
+      ]
+    }
+  },
+  
+  "outputFormat": {
+    "type": "json",
+    "colorized": true,
+    "structure": {
+      "timestamp": {
+        "type": "string",
+        "format": "ISO 8601",
+        "description": "UTC timestamp of operation"
+      },
+      "operation": {
+        "type": "string",
+        "description": "Operation performed"
+      },
+      "summary": {
+        "type": "object",
+        "properties": {
+          "total": "number",
+          "success": "number",
+          "failed": "number"
+        }
+      },
+      "processors|connections|workspaces": {
+        "type": "array",
+        "description": "Results for each item"
+      }
+    }
+  }
+}

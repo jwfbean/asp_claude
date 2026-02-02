@@ -111,19 +111,34 @@ class AtlasStreamProcessingAPI:
     def analyze_processor_complexity_detailed(self, processor_name: str) -> dict:
         """Analyze processor complexity and return detailed analysis"""
         try:
-            # Get processor definition
-            processors_dir = Path("../processors")
+            processor_data = None
+            
+            # First try to get from local file
+            processors_dir = Path("../../processors")
             processor_file = processors_dir / f"{processor_name}.json"
             
-            if not processor_file.exists():
+            if processor_file.exists():
+                with open(processor_file, 'r') as f:
+                    processor_data = json.load(f)
+            else:
+                # Fallback: get processor definition from Atlas API
+                try:
+                    response = requests.get(
+                        f"{self.base_url}/processor/{processor_name}",
+                        auth=self.auth,
+                        headers=self.headers
+                    )
+                    if response.status_code == 200:
+                        processor_data = response.json()
+                except:
+                    pass
+            
+            if not processor_data:
                 return {
                     "recommended_tier": "SP10",
-                    "analysis": {"error": "Processor file not found"},
+                    "analysis": {"error": "Processor not found locally or in Atlas"},
                     "reasoning": "Default fallback for missing processor"
                 }
-            
-            with open(processor_file, 'r') as f:
-                processor_data = json.load(f)
             
             pipeline = processor_data.get("pipeline", [])
             complexity_score = 0
@@ -163,8 +178,10 @@ class AtlasStreamProcessingAPI:
                     connections_count += 1
                 
                 # Extract parallelism settings - only count parallelism > 1
+                # Check at multiple levels: stage level, operator config level, and nested
                 if isinstance(stage, dict):
                     for key, value in stage.items():
+                        # Direct parallelism at stage level
                         if key == "parallelism" and isinstance(value, (int, float)):
                             parallelism_val = int(value)
                             if parallelism_val > 1:
@@ -172,15 +189,29 @@ class AtlasStreamProcessingAPI:
                                 total_parallelism += contribution
                                 parallelism_details.append(f"{stage_name} ({list(stage.keys())[0]}): parallelism={parallelism_val} (contributes {contribution})")
                                 complexity_score += parallelism_val * 5
-                        elif isinstance(value, dict) and "parallelism" in value:
-                            parallel_val = value.get("parallelism", 1)
-                            if isinstance(parallel_val, (int, float)):
-                                parallelism_val = int(parallel_val)
-                                if parallelism_val > 1:
-                                    contribution = parallelism_val - 1
-                                    total_parallelism += contribution
-                                    parallelism_details.append(f"{stage_name} ({key}): parallelism={parallelism_val} (contributes {contribution})")
-                                    complexity_score += parallelism_val * 5
+                        # Parallelism inside operator config (e.g., $merge.parallelism)
+                        elif isinstance(value, dict):
+                            if "parallelism" in value:
+                                parallel_val = value.get("parallelism", 1)
+                                if isinstance(parallel_val, (int, float)):
+                                    parallelism_val = int(parallel_val)
+                                    if parallelism_val > 1:
+                                        contribution = parallelism_val - 1
+                                        total_parallelism += contribution
+                                        parallelism_details.append(f"{stage_name} ({key}): parallelism={parallelism_val} (contributes {contribution})")
+                                        complexity_score += parallelism_val * 5
+                            # Also check nested "into" for $merge
+                            if "into" in value and isinstance(value.get("into"), dict):
+                                into_config = value["into"]
+                                if "parallelism" in into_config:
+                                    parallel_val = into_config.get("parallelism", 1)
+                                    if isinstance(parallel_val, (int, float)):
+                                        parallelism_val = int(parallel_val)
+                                        if parallelism_val > 1:
+                                            contribution = parallelism_val - 1
+                                            total_parallelism += contribution
+                                            parallelism_details.append(f"{stage_name} ({key}.into): parallelism={parallelism_val} (contributes {contribution})")
+                                            complexity_score += parallelism_val * 5
                 
                 # Check for Kafka partitions
                 if "kafka" in str(stage).lower():
@@ -474,12 +505,21 @@ class AtlasStreamProcessingAPI:
                     detail_data = detail_response.json()
                     processor["tier"] = detail_data.get("tier", "unknown")
                     processor["scaleFactor"] = detail_data.get("scaleFactor", "unknown")
-                    # Add all available stats data when verbose
-                    if verbose:
-                        processor["full_response"] = detail_data  # Capture full response for verbose output
+                    
                     # Add verbose stats if available
                     if "stats" in detail_data:
                         processor["stats"] = detail_data["stats"]
+                    
+                    # Add errorMsg if present (for failed processors)
+                    if "errorMsg" in detail_data:
+                        processor["errorMsg"] = detail_data["errorMsg"]
+                    
+                    # Add all available data when verbose
+                    if verbose:
+                        # Merge all detail data into processor
+                        for key, value in detail_data.items():
+                            if key not in processor:  # Don't overwrite existing keys
+                                processor[key] = value
                 else:
                     processor["tier"] = "unknown"
                     processor["scaleFactor"] = "unknown"
@@ -699,6 +739,80 @@ class AtlasStreamProcessingAPI:
         
         return result
     
+    def sample_processor(self, processor_name: str, num_samples: int = 3) -> Dict:
+        """Sample output from a processor by reading from its target collection"""
+        result = {
+            "processor": processor_name,
+            "operation": "schema",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "samples": [],
+            "count": 0
+        }
+        
+        try:
+            # Get processor details to find its merge target
+            proc_stats = self.get_single_processor_stats(processor_name, verbose=True)
+            
+            if not proc_stats or "processors" not in proc_stats or not proc_stats["processors"]:
+                result["status"] = "failed"
+                result["message"] = f"Processor {processor_name} not found"
+                return result
+            
+            proc_data = proc_stats["processors"][0]
+            pipeline = proc_data.get("pipeline", [])
+            
+            # Find the $merge stage to get the target collection
+            target_db = None
+            target_coll = None
+            
+            for stage in pipeline:
+                if "$merge" in stage:
+                    merge_into = stage["$merge"].get("into", {})
+                    target_db = merge_into.get("db")
+                    target_coll = merge_into.get("coll")
+                    break
+            
+            if not target_db or not target_coll:
+                result["status"] = "failed"
+                result["message"] = f"No $merge stage found in processor {processor_name} pipeline"
+                return result
+            
+            # Read sample documents from the target collection
+            from pymongo import MongoClient
+            
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                result["status"] = "failed"
+                result["message"] = "TARGET_URL not found in config"
+                return result
+            
+            target_url = target_url.strip('"')
+            client = MongoClient(target_url)
+            db = client[target_db]
+            collection = db[target_coll]
+            
+            # Get sample documents
+            samples = list(collection.find().limit(num_samples))
+            
+            # Convert ObjectIds to strings for JSON serialization
+            for doc in samples:
+                if '_id' in doc:
+                    doc['_id'] = str(doc['_id'])
+            
+            client.close()
+            
+            result["samples"] = samples
+            result["count"] = len(samples)
+            result["target_collection"] = f"{target_db}.{target_coll}"
+            result["status"] = "success"
+            result["message"] = f"Retrieved {len(samples)} sample document(s) from {target_db}.{target_coll}"
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["message"] = str(e)
+            
+        return result
+
     def start_processor(self, processor_name: str, tier: str = None) -> Dict:
         """Start a specific processor with optional tier specification"""
         self._check_workspace_required()
@@ -777,11 +891,17 @@ class AtlasStreamProcessingAPI:
             }
             
         except requests.RequestException as e:
+            error_message = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_message = f"{error_message} - Response: {e.response.text}"
+                except:
+                    pass
             return {
                 "name": processor_name,
                 "operation": "start", 
                 "status": "failed",
-                "message": str(e),
+                "message": error_message,
                 "http_code": getattr(e.response, 'status_code', None)
             }
     
@@ -979,7 +1099,7 @@ class AtlasStreamProcessingAPI:
             # First try to delete existing processor (idempotent)
             try:
                 requests.delete(
-                    f"{self.base_url}/processors/{name}",
+                    f"{self.base_url}/processor/{name}",
                     auth=self.auth,
                     headers=self.headers
                 )
@@ -1023,6 +1143,51 @@ class AtlasStreamProcessingAPI:
             return {
                 "name": name,
                 "operation": "create_processor",
+                "status": "failed",
+                "message": error_detail,
+                "http_code": getattr(e.response, 'status_code', None)
+            }
+
+    def update_processor(self, processor_name: str, pipeline: List[Dict], options: Dict = None) -> Dict:
+        """Update a processor's pipeline definition"""
+        self._check_workspace_required()
+        try:
+            # Update the processor with the correct payload format
+            payload = {
+                "pipeline": pipeline
+            }
+            
+            # Add options if they exist (like dlq configuration)
+            if options:
+                payload["options"] = options
+            
+            response = requests.patch(
+                f"{self.base_url}/processor/{processor_name}",
+                auth=self.auth,
+                headers=self.headers,
+                json=payload
+            )
+            response.raise_for_status()
+            
+            return {
+                "name": processor_name,
+                "operation": "update_processor",
+                "status": "updated",
+                "message": "Processor updated successfully"
+            }
+            
+        except requests.RequestException as e:
+            error_detail = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_body = e.response.json()
+                    error_detail = f"{str(e)} - {error_body.get('detail', error_body)}"
+                except:
+                    error_detail = f"{str(e)} - {e.response.text}"
+            
+            return {
+                "name": processor_name,
+                "operation": "update_processor",
                 "status": "failed",
                 "message": error_detail,
                 "http_code": getattr(e.response, 'status_code', None)
@@ -1486,6 +1651,1202 @@ class AtlasStreamProcessingAPI:
             recommendations.append("Processor performance appears healthy")
         
         return recommendations
+
+    def check_collection(self, database: str, collection: str, limit: int = 3) -> Dict:
+        """Check a MongoDB collection using credentials from config"""
+        try:
+            from pymongo import MongoClient
+            import json
+            from datetime import datetime
+            
+            # Get MongoDB connection string from config
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "check_collection",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            # Clean up the URL (remove quotes if present)
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            # Get document count
+            count = coll.count_documents({})
+            
+            result = {
+                "database": database,
+                "collection": collection,
+                "operation": "check_collection", 
+                "status": "success",
+                "total_documents": count,
+                "connection_url": target_url.split('@')[1] if '@' in target_url else "hidden"  # Hide credentials
+            }
+            
+            if count > 0:
+                # Get latest documents
+                latest_docs = list(coll.find({}).sort("_id", -1).limit(limit))
+                
+                # Convert ObjectIds to strings for JSON serialization
+                for doc in latest_docs:
+                    if '_id' in doc:
+                        doc['_id'] = str(doc['_id'])
+                
+                result["latest_documents"] = latest_docs
+                
+                # Check for specific processor documents if applicable
+                processor_count = coll.count_documents({"processor_name": {"$exists": True}})
+                if processor_count > 0:
+                    result["processor_documents"] = processor_count
+            
+            client.close()
+            return result
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "check_collection",
+                "status": "failed", 
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "check_collection",
+                "status": "failed",
+                "message": f"Error connecting to MongoDB: {str(e)}"
+            }
+
+    def set_pre_post_images(self, database: str, collection: str, enabled: bool = True) -> Dict:
+        """Enable or disable changeStreamPreAndPostImages on a collection"""
+        try:
+            from pymongo import MongoClient
+            
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "set_pre_post_images",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            target_url = target_url.strip('"')
+            client = MongoClient(target_url)
+            db = client[database]
+            
+            # Use collMod to enable/disable changeStreamPreAndPostImages
+            result = db.command("collMod", collection, changeStreamPreAndPostImages={"enabled": enabled})
+            
+            client.close()
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "set_pre_post_images",
+                "status": "success",
+                "enabled": enabled,
+                "message": f"changeStreamPreAndPostImages {'enabled' if enabled else 'disabled'} on {database}.{collection}"
+            }
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "set_pre_post_images",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "set_pre_post_images",
+                "status": "failed",
+                "message": f"Error setting pre/post images: {str(e)}"
+            }
+
+    def list_indexes(self, database: str, collection: str) -> Dict:
+        """List all indexes on a MongoDB collection"""
+        try:
+            from pymongo import MongoClient
+            
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "list_indexes",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            target_url = target_url.strip('"')
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            indexes = list(coll.list_indexes())
+            
+            # Clean up for JSON serialization
+            for idx in indexes:
+                if 'v' in idx:
+                    idx['v'] = int(idx['v'])
+            
+            client.close()
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "list_indexes",
+                "status": "success",
+                "count": len(indexes),
+                "indexes": indexes
+            }
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "list_indexes",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "list_indexes",
+                "status": "failed",
+                "message": f"Error listing indexes: {str(e)}"
+            }
+
+    def create_index(self, database: str, collection: str, keys: Dict, unique: bool = False, name: str = None) -> Dict:
+        """Create an index on a MongoDB collection"""
+        try:
+            from pymongo import MongoClient, ASCENDING, DESCENDING
+            
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "create_index",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            target_url = target_url.strip('"')
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            # Convert keys dict to list of tuples for pymongo
+            index_keys = [(k, v) for k, v in keys.items()]
+            
+            # Build index options
+            options = {"unique": unique}
+            if name:
+                options["name"] = name
+            
+            index_name = coll.create_index(index_keys, **options)
+            
+            client.close()
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "create_index",
+                "status": "success",
+                "index_name": index_name,
+                "keys": keys,
+                "unique": unique
+            }
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "create_index",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "create_index",
+                "status": "failed",
+                "message": f"Error creating index: {str(e)}"
+            }
+
+    def drop_index(self, database: str, collection: str, index_name: str) -> Dict:
+        """Drop an index from a MongoDB collection"""
+        try:
+            from pymongo import MongoClient
+            
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "drop_index",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            target_url = target_url.strip('"')
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            coll.drop_index(index_name)
+            
+            client.close()
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "drop_index",
+                "status": "success",
+                "dropped_index": index_name
+            }
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "drop_index",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "drop_index",
+                "status": "failed",
+                "message": f"Error dropping index: {str(e)}"
+            }
+
+    def delete_one(self, database: str, collection: str, filter_doc: Dict = None) -> Dict:
+        """Delete a single document from a MongoDB collection"""
+        try:
+            from pymongo import MongoClient
+            
+            # Get MongoDB connection string from config
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "deleteOne",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            # Clean up the URL
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            # Default filter to empty dict (deletes first document)
+            if filter_doc is None:
+                filter_doc = {}
+            
+            # Find the document first to show what was deleted
+            doc_to_delete = coll.find_one(filter_doc)
+            
+            if doc_to_delete:
+                # Delete the document
+                result = coll.delete_one(filter_doc)
+                
+                # Convert ObjectId to string for JSON serialization
+                if '_id' in doc_to_delete:
+                    doc_to_delete['_id'] = str(doc_to_delete['_id'])
+                
+                response = {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "deleteOne",
+                    "status": "success",
+                    "deleted_count": result.deleted_count,
+                    "filter": filter_doc,
+                    "deleted_document": doc_to_delete
+                }
+            else:
+                response = {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "deleteOne",
+                    "status": "success",
+                    "deleted_count": 0,
+                    "filter": filter_doc,
+                    "message": "No document matched the filter"
+                }
+            
+            client.close()
+            return response
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "deleteOne",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "deleteOne",
+                "status": "failed",
+                "message": f"Error deleting document: {str(e)}"
+            }
+
+    def insert_one(self, database: str, collection: str, document: Dict) -> Dict:
+        """Insert a single document into a MongoDB collection"""
+        try:
+            from pymongo import MongoClient
+            from datetime import datetime
+            
+            # Get MongoDB connection string from config
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "insertOne",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            # Clean up the URL
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            # Insert the document
+            result = coll.insert_one(document)
+            
+            response = {
+                "database": database,
+                "collection": collection,
+                "operation": "insertOne",
+                "status": "success",
+                "inserted_id": str(result.inserted_id),
+                "document": {k: str(v) if hasattr(v, '__str__') and not isinstance(v, (str, int, float, bool, list, dict, type(None))) else v for k, v in document.items()}
+            }
+            
+            client.close()
+            return response
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "insertOne",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "insertOne",
+                "status": "failed",
+                "message": f"Error inserting document: {str(e)}"
+            }
+
+    def query_collection(self, database: str, collection: str, filter_doc: Dict = None, projection: Dict = None, limit: int = 100) -> Dict:
+        """Query documents from a MongoDB collection"""
+        try:
+            from pymongo import MongoClient
+            from datetime import datetime
+            
+            # Get MongoDB connection string from config
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "query_collection",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                }
+            
+            # Clean up the URL
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            # Default filter to empty dict
+            if filter_doc is None:
+                filter_doc = {}
+            
+            # Execute query
+            cursor = coll.find(filter_doc, projection).limit(limit)
+            documents = list(cursor)
+            
+            # Convert ObjectIds to strings for JSON serialization
+            for doc in documents:
+                if '_id' in doc:
+                    doc['_id'] = str(doc['_id'])
+            
+            result = {
+                "database": database,
+                "collection": collection,
+                "operation": "query_collection",
+                "status": "success",
+                "filter": filter_doc,
+                "limit": limit,
+                "returned": len(documents),
+                "documents": documents
+            }
+            
+            client.close()
+            return result
+            
+        except ImportError:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "query_collection",
+                "status": "failed",
+                "message": "pymongo not installed. Run: pip install pymongo"
+            }
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "query_collection",
+                "status": "failed",
+                "message": f"Error querying MongoDB: {str(e)}"
+            }
+
+    def list_materialized_views(self, database: str = None) -> Dict:
+        """List materialized views by finding MV_ prefixed collections with matching stream processors"""
+        result = {
+            "operation": "list_materialized_views",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "materialized_views": [],
+            "summary": {
+                "total": 0,
+                "in_sync": 0,
+                "collection_only": 0,
+                "processor_only": 0,
+                "by_database": {}
+            },
+            "debug_info": []
+        }
+        
+        try:
+            # Get all processors and filter for MV_ prefix
+            processors_list = self.list_processors()
+            mv_processors = {}
+            for p in processors_list:
+                if p["name"].startswith("MV_"):
+                    mv_processors[p["name"]] = p.get("status", "UNKNOWN")
+            
+            result["debug_info"].append(f"Found {len(mv_processors)} MV_ processors: {list(mv_processors.keys())}")
+            
+            # Get collections from specified database or common databases
+            if database:
+                databases_to_check = [database]
+            else:
+                # Check common database names
+                databases_to_check = ["analytics", "streams", "sample_stream_solar", "bulk_test_source", "bulk_test_sink"]
+            
+            all_mv_collections = {}
+            
+            # Check each database for MV_ collections
+            for db_name in databases_to_check:
+                try:
+                    collections_response = self.list_database_collections(db_name)
+                    if collections_response.get("status") == "success":
+                        collections = collections_response.get("collections", [])
+                        mv_collections_in_db = [c for c in collections if c.startswith("MV_")]
+                        
+                        for collection_name in mv_collections_in_db:
+                            all_mv_collections[f"{db_name}.{collection_name}"] = {
+                                "db": db_name,
+                                "collection": collection_name
+                            }
+                        
+                        result["debug_info"].append(f"Database {db_name}: Found {len(mv_collections_in_db)} MV_ collections: {mv_collections_in_db}")
+                        
+                except Exception as e:
+                    result["debug_info"].append(f"Error checking database {db_name}: {str(e)}")
+                    continue
+            
+            # Now match collections with processors
+            all_mv_names = set()
+            
+            # Add all MV_ processor names
+            all_mv_names.update(mv_processors.keys())
+            
+            # Add all MV_ collection names (without db prefix)
+            for full_name, info in all_mv_collections.items():
+                all_mv_names.add(info["collection"])
+            
+            result["debug_info"].append(f"All unique MV_ names found: {sorted(all_mv_names)}")
+            
+            # Create materialized view entries for each MV_ name
+            for mv_name in all_mv_names:
+                has_processor = mv_name in mv_processors
+                
+                # Find collections for this MV name
+                matching_collections = []
+                for full_name, info in all_mv_collections.items():
+                    if info["collection"] == mv_name:
+                        # Get document count for this collection
+                        try:
+                            count_result = self.check_collection(info["db"], mv_name)
+                            doc_count = count_result.get("total_documents", "unknown") if count_result.get("status") == "success" else "error"
+                        except:
+                            doc_count = "error"
+                        
+                        matching_collections.append({
+                            "database": info["db"],
+                            "full_name": full_name,
+                            "document_count": doc_count
+                        })
+                
+                # Get full processor details including pipeline
+                processor_info = {
+                    "name": mv_name,
+                    "status": mv_processors.get(mv_name, "NOT_FOUND"),
+                    "exists": has_processor,
+                    "pipeline": None
+                }
+                
+                if has_processor:
+                    try:
+                        # Fetch full processor details including pipeline
+                        proc_details = self.get_single_processor_stats(mv_name, verbose=True)
+                        if proc_details and "processors" in proc_details and proc_details["processors"]:
+                            proc_data = proc_details["processors"][0]
+                            if "pipeline" in proc_data:
+                                processor_info["pipeline"] = proc_data["pipeline"]
+                    except Exception as e:
+                        result["debug_info"].append(f"Could not fetch pipeline for {mv_name}: {str(e)}")
+                
+                # Determine sync status
+                if has_processor and matching_collections:
+                    sync_status = "in_sync"
+                    result["summary"]["in_sync"] += 1
+                elif matching_collections and not has_processor:
+                    sync_status = "collection_only"
+                    result["summary"]["collection_only"] += 1
+                elif has_processor and not matching_collections:
+                    sync_status = "processor_only"
+                    result["summary"]["processor_only"] += 1
+                else:
+                    continue  # Shouldn't happen
+                
+                # Extract the base name (without MV_ prefix)
+                base_name = mv_name[3:] if mv_name.startswith("MV_") else mv_name
+                
+                materialized_view = {
+                    "name": base_name,
+                    "prefixed_name": mv_name,
+                    "sync_status": sync_status,
+                    "collections": matching_collections,
+                    "processor": processor_info
+                }
+                
+                result["materialized_views"].append(materialized_view)
+                result["summary"]["total"] += 1
+                
+                # Update by_database count
+                for col in matching_collections:
+                    db_name = col["database"]
+                    if db_name not in result["summary"]["by_database"]:
+                        result["summary"]["by_database"][db_name] = 0
+                    result["summary"]["by_database"][db_name] += 1
+            
+            result["status"] = "success"
+            result["message"] = f"Found {result['summary']['total']} materialized views (MV_ prefixed)"
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["message"] = str(e)
+            result["debug_info"].append(f"Fatal error: {str(e)}")
+            
+        return result
+
+    def drop_materialized_view(self, view_name: str, database: str = None) -> Dict:
+        """Drop a materialized view by removing both MongoDB collection and Stream Processing processor"""
+        
+        # Add MV_ prefix to match the naming convention
+        prefixed_name = f"MV_{view_name}"
+        
+        result = {
+            "view_name": view_name,
+            "prefixed_name": prefixed_name,
+            "database": database,
+            "operation": "drop_materialized_view",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "steps": [],
+            "summary": {
+                "collections_dropped": 0,
+                "processors_dropped": 0,
+                "collections_not_found": 0,
+                "processors_not_found": 0
+            }
+        }
+        
+        # Step 1: Find and drop collections with the prefixed name
+        collections_found = []
+        
+        # Determine which databases to check
+        if database:
+            databases_to_check = [database]
+        else:
+            # Check common databases if no specific database provided
+            databases_to_check = ["analytics", "streams", "sample_stream_solar", "bulk_test_source", "bulk_test_sink"]
+        
+        # Find collections with the prefixed name
+        for db_name in databases_to_check:
+            try:
+                collections_response = self.list_database_collections(db_name)
+                if collections_response.get("status") == "success":
+                    collections = collections_response.get("collections", [])
+                    if prefixed_name in collections:
+                        collections_found.append(db_name)
+            except Exception as e:
+                result["steps"].append({
+                    "step": "find_collections",
+                    "status": "warning",
+                    "message": f"Could not check database {db_name}: {str(e)}"
+                })
+        
+        # Drop found collections
+        for db_name in collections_found:
+            try:
+                from pymongo import MongoClient
+                
+                # Get MongoDB connection string from config
+                target_url = self.config.get("TARGET_URL")
+                if not target_url:
+                    result["steps"].append({
+                        "step": "drop_collection",
+                        "status": "failed",
+                        "message": f"Cannot drop collection {db_name}.{prefixed_name} - TARGET_URL not found in config"
+                    })
+                    continue
+                
+                target_url = target_url.strip('"')
+                client = MongoClient(target_url)
+                db = client[db_name]
+                
+                # Drop the collection
+                collection = db[prefixed_name]
+                collection.drop()
+                client.close()
+                
+                result["steps"].append({
+                    "step": "drop_collection",
+                    "status": "success",
+                    "message": f"Dropped MongoDB collection {db_name}.{prefixed_name}"
+                })
+                result["summary"]["collections_dropped"] += 1
+                
+            except Exception as e:
+                result["steps"].append({
+                    "step": "drop_collection",
+                    "status": "failed", 
+                    "message": f"Failed to drop collection {db_name}.{prefixed_name}: {str(e)}"
+                })
+        
+        if not collections_found:
+            result["steps"].append({
+                "step": "find_collections",
+                "status": "info",
+                "message": f"No collections found with name {prefixed_name}"
+            })
+            result["summary"]["collections_not_found"] = 1
+        
+        # Step 2: Drop the Stream Processing processor
+        try:
+            # Check if processor exists first
+            processors_list = self.list_processors()
+            processor_exists = any(p["name"] == prefixed_name for p in processors_list)
+            
+            if processor_exists:
+                # Delete the processor using SP API
+                import requests
+                
+                response = requests.delete(
+                    f"{self.base_url}/processor/{prefixed_name}",
+                    auth=self.auth,
+                    headers=self.headers
+                )
+                
+                if response.status_code in [200, 204, 404]:
+                    result["steps"].append({
+                        "step": "drop_processor",
+                        "status": "success",
+                        "message": f"Dropped Stream Processing processor {prefixed_name}"
+                    })
+                    result["summary"]["processors_dropped"] = 1
+                else:
+                    result["steps"].append({
+                        "step": "drop_processor",
+                        "status": "failed",
+                        "message": f"Failed to drop processor {prefixed_name}: HTTP {response.status_code}"
+                    })
+            else:
+                result["steps"].append({
+                    "step": "find_processor",
+                    "status": "info",
+                    "message": f"Processor {prefixed_name} not found"
+                })
+                result["summary"]["processors_not_found"] = 1
+                
+        except Exception as e:
+            result["steps"].append({
+                "step": "drop_processor",
+                "status": "failed",
+                "message": f"Error dropping processor {prefixed_name}: {str(e)}"
+            })
+        
+        # Determine overall status
+        total_dropped = result["summary"]["collections_dropped"] + result["summary"]["processors_dropped"]
+        total_not_found = result["summary"]["collections_not_found"] + result["summary"]["processors_not_found"]
+        
+        if total_dropped > 0 and total_not_found == 0:
+            result["status"] = "success"
+            result["message"] = f"Successfully dropped materialized view {view_name} ({total_dropped} components)"
+        elif total_dropped > 0:
+            result["status"] = "partial"
+            result["message"] = f"Partially dropped materialized view {view_name} ({total_dropped} dropped, {total_not_found} not found)"
+        else:
+            result["status"] = "not_found"
+            result["message"] = f"Materialized view {view_name} not found (no collections or processors with name {prefixed_name})"
+        
+        return result
+
+    def manage_collection_ttl(self, database: str, collection: str, seconds: int = None, field: str = "_ts") -> Dict:
+        """
+        Manage TTL (time-to-live) settings for a collection.
+        
+        Args:
+            database: Database name
+            collection: Collection name
+            seconds: TTL in seconds. If None, removes TTL. If provided, sets TTL.
+            field: Field to set TTL on (default: "_ts")
+            
+        Returns:
+            Dict with operation result
+        """
+        try:
+            from pymongo import MongoClient
+            
+            # Get MongoDB connection details from config
+            target_url = self.config.get('TARGET_URL')
+            if not target_url:
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "manage_ttl",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config"
+                }
+            
+            # Clean up the URL (remove quotes if present)
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB
+            client = MongoClient(target_url)
+            db = client[database]
+            coll = db[collection]
+            
+            # Get existing indexes to check for TTL
+            existing_indexes = list(coll.list_indexes())
+            ttl_index_name = f"{field}_ttl"
+            
+            if seconds is None:
+                # Remove TTL - look for existing TTL index and drop it
+                ttl_indexes = [idx for idx in existing_indexes 
+                             if idx.get('expireAfterSeconds') is not None]
+                
+                if ttl_indexes:
+                    for idx in ttl_indexes:
+                        coll.drop_index(idx['name'])
+                    
+                    return {
+                        "database": database,
+                        "collection": collection,
+                        "operation": "remove_ttl",
+                        "status": "success",
+                        "message": f"Removed TTL from collection {database}.{collection}",
+                        "removed_indexes": [idx['name'] for idx in ttl_indexes]
+                    }
+                else:
+                    return {
+                        "database": database,
+                        "collection": collection,
+                        "operation": "remove_ttl",
+                        "status": "success",
+                        "message": f"No TTL found on collection {database}.{collection}"
+                    }
+            else:
+                # Set TTL
+                # Determine which field to use for TTL
+                ttl_field = field
+                
+                # If no specific field was provided, try to use _ts if it exists
+                if field == "_ts":  # This is the default parameter value
+                    ts_exists = coll.find_one({"_ts": {"$exists": True}}) is not None
+                    if ts_exists:
+                        ttl_field = "_ts"
+                    else:
+                        # Look for other common timestamp fields
+                        for candidate_field in ["timestamp", "createdAt", "created_at", "date"]:
+                            if coll.find_one({candidate_field: {"$exists": True}}):
+                                ttl_field = candidate_field
+                                break
+                        else:
+                            return {
+                                "database": database,
+                                "collection": collection,
+                                "operation": "set_ttl",
+                                "status": "failed",
+                                "message": f"No suitable timestamp field found. Collection has no '_ts' field and no common timestamp fields (timestamp, createdAt, created_at, date) found."
+                            }
+                
+                # Check if the determined field exists in collection
+                sample_doc = coll.find_one({ttl_field: {"$exists": True}})
+                if not sample_doc:
+                    return {
+                        "database": database,
+                        "collection": collection,
+                        "operation": "set_ttl",
+                        "status": "failed",
+                        "message": f"Field '{ttl_field}' not found in collection. Cannot set TTL on non-existent field."
+                    }
+                
+                # Drop existing TTL index if it exists
+                existing_ttl = [idx for idx in existing_indexes 
+                               if idx.get('expireAfterSeconds') is not None and ttl_field in idx.get('key', {})]
+                for idx in existing_ttl:
+                    coll.drop_index(idx['name'])
+                
+                # Create new TTL index
+                ttl_index_name = f"{ttl_field}_ttl"
+                coll.create_index([(ttl_field, 1)], 
+                                expireAfterSeconds=seconds, 
+                                name=ttl_index_name)
+                
+                return {
+                    "database": database,
+                    "collection": collection,
+                    "operation": "set_ttl",
+                    "status": "success",
+                    "message": f"Set TTL of {seconds} seconds on field '{ttl_field}' for collection {database}.{collection}",
+                    "ttl_seconds": seconds,
+                    "ttl_field": ttl_field,
+                    "index_name": ttl_index_name
+                }
+                
+        except Exception as e:
+            return {
+                "database": database,
+                "collection": collection,
+                "operation": "manage_ttl",
+                "status": "failed",
+                "message": f"Error managing TTL: {str(e)}"
+            }
+
+    def list_database_collections(self, database: str) -> Dict:
+        """
+        List all collections in a database.
+        
+        Args:
+            database: Database name
+            
+        Returns:
+            Dict with list of collections
+        """
+        try:
+            from pymongo import MongoClient
+            
+            # Get MongoDB connection details from config
+            target_url = self.config.get('TARGET_URL')
+            if not target_url:
+                return {
+                    "database": database,
+                    "operation": "list_collections",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config"
+                }
+            
+            # Clean up the URL (remove quotes if present)
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB
+            client = MongoClient(target_url)
+            db = client[database]
+            
+            # Get list of collections
+            collections = db.list_collection_names()
+            
+            return {
+                "database": database,
+                "operation": "list_collections",
+                "status": "success",
+                "collections": collections,
+                "count": len(collections)
+            }
+                
+        except Exception as e:
+            return {
+                "database": database,
+                "operation": "list_collections",
+                "status": "failed",
+                "message": f"Error listing collections: {str(e)}"
+            }
+
+    def create_materialized_view(self, view_name: str, database: str, processor_file: str) -> Dict:
+        """Create a materialized view by creating both a collection and stream processor with MV_ prefix"""
+        
+        # Add MV_ prefix to ensure proper identification
+        prefixed_name = f"MV_{view_name}"
+        
+        result = {
+            "view_name": view_name,
+            "prefixed_name": prefixed_name,
+            "database": database,
+            "operation": "create_materialized_view",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "steps": []
+        }
+        
+        try:
+            # Step 1: Create the collection with MV_ prefix using MongoDB connection string
+            from pymongo import MongoClient
+            
+            # Get MongoDB connection string from config
+            target_url = self.config.get("TARGET_URL")
+            if not target_url:
+                result["steps"].append({
+                    "step": "create_collection",
+                    "status": "failed",
+                    "message": "TARGET_URL not found in config.txt"
+                })
+                result["status"] = "failed"
+                result["message"] = "Collection creation failed - MongoDB connection not configured"
+                return result
+            
+            # Clean up the URL (remove quotes if present)
+            target_url = target_url.strip('"')
+            
+            # Connect to MongoDB and create the collection
+            client = MongoClient(target_url)
+            db = client[database]
+            collection = db[prefixed_name]
+            
+            # Ensure the collection exists by inserting and removing a temp document
+            try:
+                temp_doc = collection.insert_one({"_temp": "create_collection"})
+                collection.delete_one({"_id": temp_doc.inserted_id})
+                
+                # Read processor config to check if $merge uses 'on' field
+                # If so, create the required index
+                with open(processor_file, 'r') as f:
+                    processor_config = json.load(f)
+                
+                merge_on_field = None
+                if "pipeline" in processor_config:
+                    for stage in processor_config["pipeline"]:
+                        if "$merge" in stage and "on" in stage["$merge"]:
+                            merge_on_field = stage["$merge"]["on"]
+                            break
+                
+                if merge_on_field:
+                    # Create index on the merge key field
+                    collection.create_index(merge_on_field, unique=True)
+                    result["steps"].append({
+                        "step": "create_collection",
+                        "status": "success",
+                        "message": f"Created MongoDB collection {database}.{prefixed_name} with index on {merge_on_field}"
+                    })
+                else:
+                    result["steps"].append({
+                        "step": "create_collection",
+                        "status": "success",
+                        "message": f"Created MongoDB collection {database}.{prefixed_name}"
+                    })
+            except Exception as mongo_e:
+                result["steps"].append({
+                    "step": "create_collection", 
+                    "status": "failed",
+                    "message": f"MongoDB collection creation failed: {str(mongo_e)}"
+                })
+                result["status"] = "failed"
+                result["message"] = "Collection creation failed"
+                return result
+            finally:
+                client.close()
+        
+        except Exception as e:
+            result["steps"].append({
+                "step": "create_collection",
+                "status": "failed",
+                "message": str(e)
+            })
+            result["status"] = "failed"
+            result["message"] = "Collection creation failed"
+            return result
+        
+        try:
+            # Step 2: Modify processor config to use the prefixed collection name
+            with open(processor_file, 'r') as f:
+                processor_config = json.load(f)
+            
+            # Update the processor name and any merge targets to use prefixed names
+            if "pipeline" in processor_config:
+                for stage in processor_config["pipeline"]:
+                    if "$merge" in stage:
+                        # Update the merge target to use the prefixed collection
+                        if "into" in stage["$merge"]:
+                            stage["$merge"]["into"]["db"] = database
+                            stage["$merge"]["into"]["coll"] = prefixed_name
+            
+            result["steps"].append({
+                "step": "modify_processor_config",
+                "status": "success",
+                "message": f"Updated processor config to target {database}.{prefixed_name}"
+            })
+            
+        except Exception as e:
+            result["steps"].append({
+                "step": "modify_processor_config",
+                "status": "failed",
+                "message": str(e)
+            })
+            result["status"] = "partial"
+            result["message"] = "Collection created but processor config modification failed"
+            return result
+        
+        try:
+            # Step 3: Create the stream processor using Atlas Stream Processing API
+            pipeline = processor_config.get("pipeline", [])
+            options = processor_config.get("options", {})
+            
+            # Use Stream Processing API (self.base_url) to create processor
+            create_result = self.create_processor_from_json(
+                name=prefixed_name,  # Use prefixed name for processor too
+                pipeline=pipeline,
+                options=options if options else None
+            )
+            
+            if create_result.get("status") == "created":
+                result["steps"].append({
+                    "step": "create_processor",
+                    "status": "success",
+                    "message": f"Created Stream Processing processor {prefixed_name}"
+                })
+                
+                # Step 4: Start the processor so it begins processing data
+                # Give processor a moment to validate after creation
+                import time
+                time.sleep(2)
+                
+                try:
+                    start_result = self.start_processor(prefixed_name)
+                    if start_result.get("status") == "started":
+                        result["steps"].append({
+                            "step": "start_processor",
+                            "status": "success",
+                            "message": f"Started processor {prefixed_name}"
+                        })
+                        result["status"] = "success"
+                        result["message"] = f"Successfully created and started materialized view {view_name} (as {prefixed_name})"
+                    else:
+                        result["steps"].append({
+                            "step": "start_processor",
+                            "status": "failed",
+                            "message": start_result.get("message", "Failed to start processor")
+                        })
+                        result["status"] = "partial"
+                        result["message"] = "Materialized view created but processor not started"
+                except Exception as start_e:
+                    result["steps"].append({
+                        "step": "start_processor",
+                        "status": "failed",
+                        "message": str(start_e)
+                    })
+                    result["status"] = "partial"
+                    result["message"] = "Materialized view created but processor not started"
+                    
+            else:
+                result["steps"].append({
+                    "step": "create_processor", 
+                    "status": "failed",
+                    "message": create_result.get("message", "Failed to create processor")
+                })
+                result["status"] = "partial"
+                result["message"] = "Collection created but processor creation failed"
+                
+        except Exception as e:
+            result["steps"].append({
+                "step": "create_processor",
+                "status": "failed", 
+                "message": str(e)
+            })
+            result["status"] = "partial"
+            result["message"] = "Collection created but processor creation failed"
+            
+        return result
+
+    def create_processor_from_config(self, processor_config: dict) -> Dict:
+        """Create a processor from a configuration dictionary using the existing SP API"""
+        try:
+            # Save the processor config to a temporary file and use the existing create_processor method
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                json.dump(processor_config, tmp_file, indent=2)
+                tmp_file_path = tmp_file.name
+            
+            try:
+                # Use the existing create_processor method
+                result = self.create_processor(processor_config["name"], tmp_file_path)
+                
+                # Clean up temp file
+                os.unlink(tmp_file_path)
+                
+                if result.get("status") == "created":
+                    return {"status": "created", "message": "Processor created successfully"}
+                else:
+                    return {"status": "failed", "message": result.get("message", "Failed to create processor")}
+                    
+            except Exception as e:
+                # Clean up temp file on error
+                os.unlink(tmp_file_path)
+                raise e
+                
+        except Exception as e:
+            return {"status": "failed", "message": f"Error creating processor: {str(e)}"}
 
 
 def main():

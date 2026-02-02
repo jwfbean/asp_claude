@@ -4,15 +4,15 @@ This document summarizes the `sp` utility usage for AI systems working with Mong
 
 ## The `sp` Utility - Primary Tool
 
-**Location**: `tools/sp` (executable Python script)
-**Working Directory**: Always run from `tools/` directory
+**Location**: `tools/sp/sp` (executable Python script)
+**Working Directory**: Always run from `tools/sp/` directory
 
 ## Essential Commands for AI Use
 
 ### Basic Workflow
 ```bash
-# Navigate to tools directory FIRST
-cd tools/
+# Navigate to tools/sp directory FIRST
+cd tools/sp/
 
 # Test processors before deployment
 ./sp processors test                    # Test all processors
@@ -75,13 +75,13 @@ cd tools/
 
 ### When User Says "Create a Processor"
 1. Generate JSON file in `processors/` directory
-2. Run: `cd tools && ./sp processors create`
+2. Run: `cd tools/sp && ./sp processors create`
 3. Verify: `./sp processors list`
 4. Start if needed: `./sp processors start`
 
-### When User Says "Deploy" or "Create Connections"  
+### When User Says "Deploy" or "Create Connections"
 1. Update `connections/connections.json`
-2. Run: `cd tools && ./sp workspaces connections create`
+2. Run: `cd tools/sp && ./sp workspaces connections create`
 3. Verify: `./sp processors list`
 
 ### For Monitoring and Status
@@ -93,7 +93,7 @@ cd tools/
 
 **CRITICAL**: Always use the `sp` utility for ALL stream processing operations:
 
-**DO**: `cd tools && ./sp create processors`
+**DO**: `cd tools/sp && ./sp processors create`
 **DON'T**: Manual API calls or other deployment methods
 
 **DO**: `./sp list` for status checking  
@@ -134,22 +134,23 @@ project_root/
 │   └── connections.json (connection definitions)
 ├── processors/
 │   ├── processor1.json
-│   └── processor2.json  
+│   └── processor2.json
 └── tools/
-    └── sp (PRIMARY TOOL - use this!)
+    └── sp/
+        └── sp (PRIMARY TOOL - use this!)
 ```
 
 ## Quick Reference
 
 | User Request | AI Action |
 |-------------|-----------|
-| "Test processors" | `cd tools && ./sp test` |
-| "Test specific processor" | `cd tools && ./sp test -p processor_name` |
-| "Create a processor" | 1. Generate JSON in `processors/`<br>2. `cd tools && ./sp test`<br>3. `cd tools && ./sp create processors`<br>4. `./sp list` |
-| "Deploy connections" | 1. Update `connections.json`<br>2. `cd tools && ./sp create connections` |
-| "Check status" | `cd tools && ./sp list` |
-| "Monitor performance" | `cd tools && ./sp stats` |
-| "Start processors" | `cd tools && ./sp start` |
-| "Stop processors" | `cd tools && ./sp stop` |
+| "Test processors" | `cd tools/sp && ./sp processors test` |
+| "Test specific processor" | `cd tools/sp && ./sp processors test -p processor_name` |
+| "Create a processor" | 1. Generate JSON in `processors/`<br>2. `cd tools/sp && ./sp processors test`<br>3. `cd tools/sp && ./sp processors create`<br>4. `./sp processors list` |
+| "Deploy connections" | 1. Update `connections.json`<br>2. `cd tools/sp && ./sp workspaces connections create` |
+| "Check status" | `cd tools/sp && ./sp processors list` |
+| "Monitor performance" | `cd tools/sp && ./sp processors stats` |
+| "Start processors" | `cd tools/sp && ./sp processors start` |
+| "Stop processors" | `cd tools/sp && ./sp processors stop` |
 
 Remember: The `sp` utility is the **single source of truth** for all stream processing operations in this repository.

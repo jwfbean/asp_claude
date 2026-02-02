@@ -140,7 +140,7 @@ The test uses the active connection from `connections/connections.json`. To test
 
 **"SP command not found"**
 - Ensure you're running from the ASP_base directory
-- The test looks for the `sp` tool in `tools/sp`
+- The test looks for the `sp` tool in `tools/sp/sp`
 
 ### Manual Verification
 

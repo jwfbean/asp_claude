@@ -77,7 +77,7 @@ fi
 ### **Files Modified/Added**
 
 #### Enhanced Files:
-- `tools/sp` - Added `run_connection_test()` function and CLI integration
+- `tools/sp/sp` - Added `run_connection_test()` function and CLI integration
 - `test/test_connection.py` - Enhanced with required MongoDB verification
 
 #### New Files:

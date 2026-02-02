@@ -4,13 +4,13 @@ This guide provides AI systems with step-by-step workflows for developing, testi
 
 ## The `sp` Utility - Essential Tool
 
-**CRITICAL**: All stream processing operations must use the `sp` utility located in `tools/sp`. This is the **primary and preferred tool** for all stream processing management.
+**CRITICAL**: All stream processing operations must use the `sp` utility located in `tools/sp/sp`. This is the **primary and preferred tool** for all stream processing management.
 
 ### Quick Start with `sp`
 
 ```bash
-# Always start by navigating to tools directory
-cd tools/
+# Always start by navigating to tools/sp directory
+cd tools/sp/
 
 # Essential commands:
 ./sp workspaces connections create    # Deploy connections
@@ -49,8 +49,8 @@ For the most current information on Stream Processing workflows:
 #### 1.2 Create Stream Processing Workspace
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # List existing workspaces (if any)
 ./sp workspaces list
@@ -71,7 +71,7 @@ cd tools/
 # Expected output: JSON list of processors (may be empty for new workspace)
 ```
 
-**Note**: The `sp` utility is located in `tools/sp` and is the **primary tool** for all stream processing operations. Always run it from the `tools/` directory.
+**Note**: The `sp` utility is located in `tools/sp/sp` and is the **primary tool** for all stream processing operations. Always run it from the `tools/sp/` directory.
 
 ### Phase 2: Connection Development
 
@@ -108,8 +108,8 @@ cd tools/
 #### 2.3 Deploy Connections
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # Deploy all connections from connections/*.json files
 ./sp workspaces connections create
@@ -174,8 +174,8 @@ cd tools/
 #### 3.3 Deploy and Test Processor
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # Create the processor
 ./sp processors create
@@ -217,8 +217,8 @@ cd tools/
 
 ```bash
 # Test with real data sources
-# Navigate to tools directory first
-cd tools/
+# Navigate to tools/sp directory first
+cd tools/sp/
 
 # Monitor processor performance
 ./sp processors stats
@@ -260,8 +260,8 @@ cd tools/
 #### 5.2 Deployment Process
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # Stop existing processor (if updating)
 ./sp processors stop
@@ -279,8 +279,8 @@ cd tools/
 #### 5.3 Post-deployment Monitoring
 
 ```bash
-# Navigate to tools directory  
-cd tools/
+# Navigate to tools/sp directory  
+cd tools/sp/
 
 # Monitor processor health
 ./sp stats
@@ -303,8 +303,8 @@ cd tools/
 #### 1. Connection Failures
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # Check connection status via processor list
 ./sp list
@@ -335,8 +335,8 @@ cd tools/
 #### 4. Performance Issues
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # Monitor processing rates
 ./sp stats
@@ -397,8 +397,8 @@ cd tools/
 ### Regular Health Checks
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # Daily processor health check  
 ./sp list
@@ -452,8 +452,8 @@ When implementing stream processing solutions:
 ### Example Development Session
 
 ```bash
-# Navigate to tools directory
-cd tools/
+# Navigate to tools/sp directory
+cd tools/sp/
 
 # 1. Create connection
 ./sp create connections

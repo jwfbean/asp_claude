@@ -8,7 +8,7 @@ This document helps AI systems understand and configure different connection typ
 
 ```bash
 # Navigate to tools directory
-cd tools/
+cd tools/sp/
 
 # Check if you have a workspace
 ./sp workspace list
@@ -22,11 +22,11 @@ cd tools/
 
 ## The `sp` Utility for Connection Management
 
-**IMPORTANT**: Always use the `sp` utility located in `tools/sp` for deploying and managing connections:
+**IMPORTANT**: Always use the `sp` utility located in `tools/sp/sp` for deploying and managing connections:
 
 ```bash
 # Navigate to tools directory
-cd tools/
+cd tools/sp/
 
 # Deploy all connections from connections.json
 ./sp workspace connections create

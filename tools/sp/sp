@@ -6,6 +6,7 @@ Unified tool for WeatherFlow Atlas Stream Processing management
 
 import argparse
 import json
+import os
 import sys
 import time
 import subprocess
@@ -275,7 +276,7 @@ def run_connection_test(require_mongodb=True, specific_connection=None):
     if require_mongodb and not os.environ.get('MONGODB_CONNECTION_STRING'):
         print("CRITICAL: MongoDB native driver verification is REQUIRED")
         print("   Set MONGODB_CONNECTION_STRING environment variable with your Atlas cluster credentials.")
-        print("   Example: export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@your-cluster.mongodb.net/'")
+        print("   Example: export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@kgshardedcluster01.mongodb.net/'")
         print("\n   This ensures authoritative verification that your Stream Processing connection works.")
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -442,6 +443,76 @@ def main():
     parser.add_argument("--config", default="../config.txt",
                        help="Atlas API configuration file path (default: ../config.txt)")
     
+
+    collections_parser = subparsers.add_parser("collections", help="MongoDB collection inspection")
+    collections_subparsers = collections_parser.add_subparsers(dest="collections_action", help="Collection actions")
+    
+    # Collection count
+    collections_count_parser = collections_subparsers.add_parser("count", help="Count documents in MongoDB collection")
+    collections_count_parser.add_argument("-c", "--collection", required=True, help="Collection name to count")
+    
+    # Collection query
+    collections_query_parser = collections_subparsers.add_parser("query", help="Query documents from MongoDB collection")
+    collections_query_parser.add_argument("-c", "--collection", required=True, help="Collection name (format: database.collection)")
+    collections_query_parser.add_argument("-l", "--limit", type=int, default=100, help="Number of documents to return (default: 100)")
+    collections_query_parser.add_argument("-f", "--filter", help="MongoDB filter as JSON string (default: {})")
+    collections_query_parser.add_argument("-p", "--projection", help="Fields to include as JSON string (default: all fields)")
+    
+    # Collection list
+    collections_list_parser = collections_subparsers.add_parser("list", help="List all collections in a database")
+    collections_list_parser.add_argument("-d", "--database", default="test", help="Database name (default: test)")
+    
+    # Collection TTL management
+    collections_ttl_parser = collections_subparsers.add_parser("ttl", help="Manage TTL (time-to-live) for MongoDB collection")
+    collections_ttl_parser.add_argument("-c", "--collection", required=True, help="Collection name (format: database.collection or just collection)")
+    collections_ttl_parser.add_argument("-s", "--seconds", type=int, help="TTL in seconds. Omit to remove TTL.")
+    collections_ttl_parser.add_argument("-f", "--field", default="_ts", help="Field to set TTL on (default: _ts)")
+    
+    # Collection insertOne
+    collections_insert_parser = collections_subparsers.add_parser("insertOne", help="Insert a document into MongoDB collection")
+    collections_insert_parser.add_argument("-c", "--collection", required=True, help="Collection name (format: database.collection)")
+    collections_insert_parser.add_argument("-d", "--document", help="Document as JSON string (default: generates test doc with timestamp)")
+    
+    # Collection deleteOne
+    collections_delete_parser = collections_subparsers.add_parser("deleteOne", help="Delete a document from MongoDB collection")
+    collections_delete_parser.add_argument("-c", "--collection", required=True, help="Collection name (format: database.collection)")
+    collections_delete_parser.add_argument("-f", "--filter", help="MongoDB filter as JSON string (default: deletes first document)")
+    
+    # Collection index management
+    collections_index_parser = collections_subparsers.add_parser("index", help="Manage indexes on MongoDB collection")
+    collections_index_parser.add_argument("-c", "--collection", required=True, help="Collection name (format: database.collection)")
+    collections_index_parser.add_argument("-k", "--keys", help="Index keys as JSON (e.g., '{\"field\": 1}' or '{\"a\": 1, \"b\": -1}')")
+    collections_index_parser.add_argument("-u", "--unique", action="store_true", help="Create unique index")
+    collections_index_parser.add_argument("-n", "--name", help="Index name (auto-generated if not specified)")
+    collections_index_parser.add_argument("--drop", help="Drop index by name")
+    collections_index_parser.add_argument("--list", action="store_true", help="List all indexes on the collection")
+    
+    # Collection preImages (changeStreamPreAndPostImages)
+    collections_preimages_parser = collections_subparsers.add_parser("preImages", help="Enable/disable changeStreamPreAndPostImages on collection")
+    collections_preimages_parser.add_argument("-c", "--collection", required=True, help="Collection name (format: database.collection)")
+    collections_preimages_parser.add_argument("--enable", action="store_true", help="Enable pre and post images")
+    collections_preimages_parser.add_argument("--disable", action="store_true", help="Disable pre and post images")
+    
+    # Materialized Views
+    materialized_views_parser = subparsers.add_parser("materialized_views", help="Materialized view management (collection + stream processor)")
+    materialized_views_subparsers = materialized_views_parser.add_subparsers(dest="materialized_views_action", help="Materialized view actions")
+    
+    # Create materialized view
+    materialized_views_create_parser = materialized_views_subparsers.add_parser("create", help="Create a materialized view (collection + processor)")
+    materialized_views_create_parser.add_argument("view_name", help="Name for both the collection and processor")
+    materialized_views_create_parser.add_argument("-d", "--database", required=True, help="Database name for the materialized view collection")
+    materialized_views_create_parser.add_argument("-f", "--file", required=True, help="Processor JSON file path")
+    
+    # List materialized views
+    materialized_views_list_parser = materialized_views_subparsers.add_parser("list", help="List all materialized views (collections with matching processors)")
+    materialized_views_list_parser.add_argument("-d", "--database", help="Filter by database name (optional)")
+    
+    # Drop materialized view
+    materialized_views_drop_parser = materialized_views_subparsers.add_parser("drop", help="Drop a materialized view (removes both collection and processor)")
+    materialized_views_drop_parser.add_argument("view_name", help="Name of the materialized view to drop")
+    materialized_views_drop_parser.add_argument("-d", "--database", help="Database name to limit search (optional)")
+    
+
     args = parser.parse_args()
     
     if not args.command:
@@ -494,9 +565,7 @@ def main():
             if not args.connections_action:
                 workspaces_connections_parser.print_help()
                 sys.exit(1)
-
-        return
-
+                
     # Handle instance management commands (legacy alias)
     elif args.command == "instances":
         if not args.instance_action:
@@ -990,6 +1059,212 @@ def main():
                 print(colorize_json(result))
         
         return
+
+
+    elif args.command == "collections":
+        if not args.collections_action:
+            collections_parser.print_help()
+            sys.exit(1)
+        
+        if args.collections_action == "count":
+            if not args.collection:
+                collections_count_parser.print_help()
+                sys.exit(1)
+            
+            # Parse database and collection from the collection argument (format: database.collection)
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                # Default to 'test' database if not specified
+                database = 'test'
+                collection = args.collection
+            
+            # Count documents in the specified collection
+            result = api.check_collection(database, collection)
+            print(colorize_json(result))
+        
+        elif args.collections_action == "query":
+            # Query documents from collection
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                database = 'test'
+                collection = args.collection
+            
+            # Parse filter and projection if provided
+            filter_doc = {}
+            if args.filter:
+                filter_doc = json.loads(args.filter)
+            
+            projection = None
+            if args.projection:
+                projection = json.loads(args.projection)
+            
+            result = api.query_collection(database, collection, filter_doc, projection, args.limit)
+            print(colorize_json(result))
+        
+        elif args.collections_action == "list":
+            # List all collections in the specified database
+            result = api.list_database_collections(args.database)
+            print(colorize_json(result))
+        
+        elif args.collections_action == "ttl":
+            if not args.collection:
+                collections_ttl_parser.print_help()
+                sys.exit(1)
+            
+            # Parse database and collection from the collection argument (format: database.collection)
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                # Default to 'test' database if not specified
+                database = 'test'
+                collection = args.collection
+            
+            # Manage TTL for the specified collection
+            result = api.manage_collection_ttl(database, collection, args.seconds, args.field)
+            print(colorize_json(result))
+        
+        elif args.collections_action == "insertOne":
+            if not args.collection:
+                collections_insert_parser.print_help()
+                sys.exit(1)
+            
+            # Parse database and collection from the collection argument (format: database.collection)
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                print(colorize_json({"status": "error", "message": "Collection must be in format: database.collection"}))
+                sys.exit(1)
+            
+            # Parse document or generate a test document
+            if args.document:
+                try:
+                    document = json.loads(args.document)
+                except json.JSONDecodeError as e:
+                    print(colorize_json({"status": "error", "message": f"Invalid JSON document: {e}"}))
+                    sys.exit(1)
+            else:
+                # Generate a test document with timestamp (datetime imported at top)
+                document = {
+                    "test": True,
+                    "message": "Test document inserted by sp tool",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "_ts": datetime.now(timezone.utc)
+                }
+            
+            result = api.insert_one(database, collection, document)
+            print(colorize_json(result))
+        
+        elif args.collections_action == "deleteOne":
+            if not args.collection:
+                collections_delete_parser.print_help()
+                sys.exit(1)
+            
+            # Parse database and collection from the collection argument (format: database.collection)
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                print(colorize_json({"status": "error", "message": "Collection must be in format: database.collection"}))
+                sys.exit(1)
+            
+            # Parse filter or default to empty (deletes first document)
+            filter_doc = {}
+            if args.filter:
+                try:
+                    filter_doc = json.loads(args.filter)
+                except json.JSONDecodeError as e:
+                    print(colorize_json({"status": "error", "message": f"Invalid JSON filter: {e}"}))
+                    sys.exit(1)
+            
+            result = api.delete_one(database, collection, filter_doc)
+            print(colorize_json(result))
+        
+        elif args.collections_action == "index":
+            if not args.collection:
+                collections_index_parser.print_help()
+                sys.exit(1)
+            
+            # Parse database and collection from the collection argument (format: database.collection)
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                print(colorize_json({"status": "error", "message": "Collection must be in format: database.collection"}))
+                sys.exit(1)
+            
+            if args.list:
+                # List all indexes
+                result = api.list_indexes(database, collection)
+            elif args.drop:
+                # Drop an index by name
+                result = api.drop_index(database, collection, args.drop)
+            elif args.keys:
+                # Create an index
+                try:
+                    keys = json.loads(args.keys)
+                except json.JSONDecodeError as e:
+                    print(colorize_json({"status": "error", "message": f"Invalid JSON keys: {e}"}))
+                    sys.exit(1)
+                result = api.create_index(database, collection, keys, unique=args.unique, name=args.name)
+            else:
+                # Default to list if no action specified
+                result = api.list_indexes(database, collection)
+            
+            print(colorize_json(result))
+        
+        elif args.collections_action == "preImages":
+            if not args.collection:
+                collections_preimages_parser.print_help()
+                sys.exit(1)
+            
+            # Parse database and collection from the collection argument (format: database.collection)
+            if '.' in args.collection:
+                database, collection = args.collection.split('.', 1)
+            else:
+                print(colorize_json({"status": "error", "message": "Collection must be in format: database.collection"}))
+                sys.exit(1)
+            
+            if args.disable:
+                result = api.set_pre_post_images(database, collection, enabled=False)
+            else:
+                # Default to enable
+                result = api.set_pre_post_images(database, collection, enabled=True)
+            
+            print(colorize_json(result))
+        
+        return
+
+    # Handle materialized views management commands  
+
+    elif args.command == "materialized_views":
+        if not args.materialized_views_action:
+            materialized_views_parser.print_help()
+            sys.exit(1)
+        
+        if args.materialized_views_action == "create":
+            # Adjust path since we're running from tools/sp/ directory
+            config_dir = "../../" if Path("../../processors").exists() else "./"
+            processor_file = os.path.join(config_dir, "processors", args.file)
+            
+            # Create materialized view
+            result = api.create_materialized_view(args.view_name, args.database, processor_file)
+            print(colorize_json(result))
+            
+        elif args.materialized_views_action == "list":
+            result = api.list_materialized_views(database=args.database)
+            print(colorize_json(result))
+            
+        elif args.materialized_views_action == "drop":
+            result = api.drop_materialized_view(args.view_name, database=args.database)
+            print(colorize_json(result))
+        
+        return
+
+    # If we get here, an unknown command was provided
+    parser.print_help()
+    sys.exit(1)
+
+
 
     # If we get here, an unknown command was provided
     parser.print_help()

@@ -6,7 +6,7 @@ This is the **development repository** for the ASP Claude Code plugin.
 Install via: `/plugin marketplace add kgorman/asp_claude` then `/plugin install asp@kgorman`
 
 ## For Development
-When working in this repo, use `./tools/sp` directly. The plugin structure is in `.claude-plugin/` and `skills/`.
+When working in this repo, use `./tools/sp/sp` directly. The plugin structure is in `.claude-plugin/` and `skills/`.
 
 ---
 
@@ -35,12 +35,12 @@ Atlas Stream Processing allows you to build real-time data pipelines that proces
 
 2. **Install dependencies**:
    ```bash
-   pip install -r tools/requirements.txt
+   pip install -r tools/sp/requirements.txt
    ```
 
 3. **Make sp executable**:
    ```bash
-   chmod +x tools/sp
+   chmod +x tools/sp/sp
    ```
 
 ## Directory Structure
@@ -50,9 +50,12 @@ asp_claude/
 ├── CLAUDE.md              # This file - skill instructions for Claude
 ├── config.txt.example     # API credentials template (never commit actual config.txt)
 ├── tools/
-│   ├── sp                 # Main CLI tool
-│   ├── atlas_api.py       # Atlas Stream Processing API wrapper
-│   └── requirements.txt   # Python dependencies
+│   └── sp/                # Stream processing CLI toolkit
+│       ├── sp             # Main CLI tool
+│       ├── atlas_api.py   # Atlas Stream Processing API wrapper
+│       ├── requirements.txt # Python dependencies
+│       ├── sp-schema.json # JSON schema for tool
+│       └── sp.yaml        # Tool metadata
 ├── processors/            # Stream processor JSON definitions
 │   └── *.json            # Each file is a deployable processor
 ├── connections/           # Connection configurations
@@ -65,73 +68,73 @@ asp_claude/
 ### Workspace Management
 ```bash
 # List all workspaces
-./tools/sp workspaces list
+./tools/sp/sp workspaces list
 
 # Create a workspace
-./tools/sp workspaces create <name> --cloud-provider AWS --region US_EAST_1
+./tools/sp/sp workspaces create <name> --cloud-provider AWS --region US_EAST_1
 
 # Get workspace details
-./tools/sp workspaces details <name>
+./tools/sp/sp workspaces details <name>
 
 # Delete a workspace
-./tools/sp workspaces delete <name>
+./tools/sp/sp workspaces delete <name>
 ```
 
 ### Connection Management
 ```bash
 # Create connections from connections.json
-./tools/sp instances connections create
+./tools/sp/sp instances connections create
 
 # List connections
-./tools/sp instances connections list
+./tools/sp/sp instances connections list
 
 # Test connections (with MongoDB verification)
-./tools/sp instances connections test
+./tools/sp/sp instances connections test
 
 # Delete a connection
-./tools/sp instances connections delete <connection_name>
+./tools/sp/sp instances connections delete <connection_name>
 ```
 
 ### Processor Management
 ```bash
 # Create all processors from processors/ directory
-./tools/sp processors create
+./tools/sp/sp processors create
 
 # Create specific processor
-./tools/sp processors create -p <processor_name>
+./tools/sp/sp processors create -p <processor_name>
 
 # List processors with status and tier info
-./tools/sp processors list
+./tools/sp/sp processors list
 
 # Start a processor (auto-selects optimal tier)
-./tools/sp processors start -p <processor_name> --auto
+./tools/sp/sp processors start -p <processor_name> --auto
 
 # Start with specific tier
-./tools/sp processors start -p <processor_name> -t SP10
+./tools/sp/sp processors start -p <processor_name> -t SP10
 
 # Stop a processor
-./tools/sp processors stop -p <processor_name>
+./tools/sp/sp processors stop -p <processor_name>
 
 # Get processor statistics
-./tools/sp processors stats -p <processor_name>
+./tools/sp/sp processors stats -p <processor_name>
 
 # Get tier recommendation
-./tools/sp processors tier-advise -p <processor_name>
+./tools/sp/sp processors tier-advise -p <processor_name>
 
 # Delete a processor
-./tools/sp processors drop -p <processor_name>
+./tools/sp/sp processors drop -p <processor_name>
 ```
 
 ### Performance Profiling
 ```bash
 # Profile a processor for 5 minutes
-./tools/sp processors profile -p <processor_name> --duration 300
+./tools/sp/sp processors profile -p <processor_name> --duration 300
 
 # Continuous monitoring
-./tools/sp processors profile -p <processor_name> --continuous
+./tools/sp/sp processors profile -p <processor_name> --continuous
 
 # Profile with custom metrics
-./tools/sp processors profile -p <processor_name> --metrics memory,latency,throughput
+./tools/sp/sp processors profile -p <processor_name> --metrics memory,latency,throughput
 ```
 
 ## Creating Processors
@@ -220,22 +223,22 @@ Define connections in `connections/connections.json`:
 
 ### Deploy a New Processor
 1. Create processor JSON in `processors/`
-2. Run `./tools/sp processors create -p <name>`
-3. Run `./tools/sp processors start -p <name> --auto`
-4. Monitor with `./tools/sp processors stats -p <name>`
+2. Run `./tools/sp/sp processors create -p <name>`
+3. Run `./tools/sp/sp processors start -p <name> --auto`
+4. Monitor with `./tools/sp/sp processors stats -p <name>`
 
 ### Troubleshoot Performance
-1. Check status: `./tools/sp processors list`
-2. Get stats: `./tools/sp processors stats -p <name> --verbose`
-3. Profile: `./tools/sp processors profile -p <name> --duration 300`
-4. Get tier advice: `./tools/sp processors tier-advise -p <name>`
+1. Check status: `./tools/sp/sp processors list`
+2. Get stats: `./tools/sp/sp processors stats -p <name> --verbose`
+3. Profile: `./tools/sp/sp processors profile -p <name> --duration 300`
+4. Get tier advice: `./tools/sp/sp processors tier-advise -p <name>`
 
 ### Update a Processor
-1. Stop: `./tools/sp processors stop -p <name>`
+1. Stop: `./tools/sp/sp processors stop -p <name>`
 2. Edit the JSON file in `processors/`
-3. Drop old: `./tools/sp processors drop -p <name>`
-4. Create new: `./tools/sp processors create -p <name>`
-5. Start: `./tools/sp processors start -p <name> --auto`
+3. Drop old: `./tools/sp/sp processors drop -p <name>`
+4. Create new: `./tools/sp/sp processors create -p <name>`
+5. Start: `./tools/sp/sp processors start -p <name> --auto`
 
 ## Environment Variables
 
