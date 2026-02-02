@@ -10,44 +10,43 @@ This skill manages MongoDB Atlas Stream Processing (ASP) pipelines using the `sp
 
 ## Plugin Location
 
-When this plugin is installed, the tools are located at:
-`~/.claude/plugins/asp/tools/sp`
+The `sp` tool is located relative to this skill file at `../../tools/sp`.
 
-Set the plugin path variable for commands:
+To run commands, use the full path from the plugin install location:
 ```bash
-ASP_DIR="$HOME/.claude/plugins/asp"
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp
 ```
 
 ## Quick Reference
 
 ### List workspaces
 ```bash
-$ASP_DIR/tools/sp workspaces list
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp workspaces list
 ```
 
 ### List processors
 ```bash
-$ASP_DIR/tools/sp processors list
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp processors list
 ```
 
 ### Start a processor (auto-select tier)
 ```bash
-$ASP_DIR/tools/sp processors start -p <name> --auto
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp processors start -p <name> --auto
 ```
 
 ### Stop a processor
 ```bash
-$ASP_DIR/tools/sp processors stop -p <name>
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp processors stop -p <name>
 ```
 
 ### Get processor stats
 ```bash
-$ASP_DIR/tools/sp processors stats -p <name>
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp processors stats -p <name>
 ```
 
 ### Get tier recommendation
 ```bash
-$ASP_DIR/tools/sp processors tier-advise -p <name>
+~/.claude/plugins/cache/asp-marketplace/asp/1.0.0/tools/sp processors tier-advise -p <name>
 ```
 
 ## Setup Requirements
