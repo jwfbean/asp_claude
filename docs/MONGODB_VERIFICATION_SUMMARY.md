@@ -43,7 +43,7 @@ python3 test/test_connection.py
 ### Enhanced Test (with MongoDB Verification)
 ```bash
 # Set your connection string
-export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@kgshardedcluster01.mongodb.net/'
+export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@your-cluster.mongodb.net/'
 
 # Run enhanced test
 ./test_with_verification.sh

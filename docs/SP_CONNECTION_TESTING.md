@@ -17,7 +17,7 @@ Tests your Stream Processing connections with **authoritative verification** usi
 **MongoDB Connection String REQUIRED**: The test requires a MongoDB connection string to perform authoritative verification.
 
 ```bash
-export MONGODB_CONNECTION_STRING='mongodb+srv://username:password@kgshardedcluster01.mongodb.net/'
+export MONGODB_CONNECTION_STRING='mongodb+srv://username:password@your-cluster.mongodb.net/'
 ```
 
 ### Usage

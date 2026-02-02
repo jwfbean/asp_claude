@@ -22,7 +22,7 @@ For authoritative verification using MongoDB native driver:
 
 ```bash
 # Set your MongoDB connection string
-export MONGODB_CONNECTION_STRING='mongodb+srv://<username>:<password>@kgshardedcluster01.mongodb.net/'
+export MONGODB_CONNECTION_STRING='mongodb+srv://<username>:<password>@your-cluster.mongodb.net/'
 
 # Run the enhanced test
 ./test_with_verification.sh
@@ -46,7 +46,7 @@ The enhanced testing framework now includes **authoritative verification** using
 
 2. **Set the environment variable**:
    ```bash
-   export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@kgshardedcluster01.mongodb.net/'
+   export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@your-cluster.mongodb.net/'
    ```
 
 3. **Run the enhanced test**:

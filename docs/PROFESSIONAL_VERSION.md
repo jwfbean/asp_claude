@@ -42,7 +42,7 @@ export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@cluster.mongodb.net/'
 ```
 CRITICAL: MongoDB native driver verification is REQUIRED
    Set MONGODB_CONNECTION_STRING environment variable with your Atlas cluster credentials.
-   Example: export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@kgshardedcluster01.mongodb.net/'
+   Example: export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@your-cluster.mongodb.net/'
 
    This ensures authoritative verification that your Stream Processing connection works.
 ```

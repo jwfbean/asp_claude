@@ -275,7 +275,7 @@ def run_connection_test(require_mongodb=True, specific_connection=None):
     if require_mongodb and not os.environ.get('MONGODB_CONNECTION_STRING'):
         print("CRITICAL: MongoDB native driver verification is REQUIRED")
         print("   Set MONGODB_CONNECTION_STRING environment variable with your Atlas cluster credentials.")
-        print("   Example: export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@kgshardedcluster01.mongodb.net/'")
+        print("   Example: export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@your-cluster.mongodb.net/'")
         print("\n   This ensures authoritative verification that your Stream Processing connection works.")
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),

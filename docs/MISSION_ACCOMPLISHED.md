@@ -56,7 +56,7 @@ AUTHORITATIVE SUCCESS/FAILURE
 
 ### **Basic Test**
 ```bash
-export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@kgshardedcluster01.mongodb.net/'
+export MONGODB_CONNECTION_STRING='mongodb+srv://user:pass@your-cluster.mongodb.net/'
 cd /Users/kgorman/workspace/Github/ASP_base/tools
 ./sp workspaces connections test
 ```
