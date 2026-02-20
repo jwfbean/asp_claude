@@ -190,18 +190,15 @@ Claude must never suggest the following stages. If a user's request seems to req
 | :--- | :--- | :--- |
 | **$facet** | Branching is not supported | Create multiple processor files. |
 | **$out** | Not designed for streams | Use **$merge** (Atlas) or **$emit** (Kafka). |
-| **$lookup** (to Kafka) | $lookup only targets Atlas | Use multiple **$source** topics if supported or pre-join. |
-| **$graphLookup** | Recursive logic is too slow | Use flat **$lookup** or pre-calculate hierarchy. |
+| **$lookup** (to Kafka) | $lookup only targets Atlas | Use multiple **$source** topics if supported. |
+| **$graphLookup** | Recursive logic too high-latency | Use flat **$lookup** or pre-calculate. |
 | **$indexStats** | Operational stage | Use the **sp processors stats** CLI command. |
-| **$lookup** (to local) | Can't join stream-to-stream | $lookup must point to a remote Atlas collection. |
-| **Unbounded $sort** | Memory exhaustion risk | Use **$sort** strictly inside a **$window** stage. |
+| **Unbounded $sort** | Memory exhaustion risk | Use **$sort** strictly inside a **$window**. |
 
 ### The "Linear" Rule
-* **One Source, One Sink:** Every pipeline MUST start with exactly one `$source` stage and end with exactly one sink stage (`$emit` or `$merge`).
-* **No Branching:** `$facet` is NOT supported. ASP pipelines are linear.
-* **Side Outputs:** To achieve "side outputs" or parallel processing paths, you must define **multiple separate processor files** reading from the same source.
-* **Prohibited Stages:** Never suggest `$out`, `$graphLookup`, or `$indexStats`.
-* **Bounded Sort:** `$sort` is only permitted inside a `$window` stage to ensure operations are bounded by time or count.
+- **One Source, One Sink:** Every pipeline MUST start with exactly one $source stage and end with exactly one sink stage ($emit or $merge).
+- **No Branching:** $facet is NOT supported. ASP pipelines are strictly linear.
+- **Side Outputs:** To achieve parallel processing paths, define **multiple separate processor files** reading from the same source.
 
 
 ### Enrichment Strategy
