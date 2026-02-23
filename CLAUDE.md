@@ -205,16 +205,14 @@ Claude must never suggest the following stages. If a user's request seems to req
 * **Multiple Lookups:** While only one `$source` (the trigger) is allowed, a pipeline can contain multiple `$lookup` or `$cachedLookup` stages for data enrichment.
 * **Lookup Choice:** Use `$lookup` for real-time accuracy; use `$cachedLookup` for high-performance reference data (requires SP30+ tier).
 
-## Flink to ASP Translation Mapping
-When users describe streaming patterns in SQL or Flink terminology, translate to ASP-native stages:
+### General Architectural Mapping (The "Pivot" Logic)
+When translating general stream processing concepts (from SQL, Flink, or Spark) into ASP, follow these fundamental transformations:
 
-| Flink/SQL Concept | ASP Equivalent (The Pivot) |
-| :--- | :--- |
-| **`MATCH_RECOGNIZE`** | Use native **`$match`** or **`$window`**. |
-| **`Watermarks`** | Use **`idleTimeout`** and **`expireAfter`** within **`$window`**. |
-| **`KeyBy` / `Partition By`** | Use **`partitionBy`** within the **`$window`** stage. |
-| **`Side Outputs`** | Create a **separate processor file** in `/processors`. |
-| **`UDF`** | Use **`$function`** (JS) or **`$externalFunction`** (Lambda). |
+* **Continuous Patterns over Rows:** ASP does not use SQL-style pattern matching. Instead, utilize **$match** for simple filters and **$window** (specifically windowed pipelines) for stateful pattern detection.
+* **Time Management (Watermarking):** ASP manages "lateness" and "idleness" within the **$window** stage configuration. Use `idleTimeout` and `expireAfter` to handle late-arriving data.
+* **Data Partitioning:** Concepts like `KeyBy` or `PartitionBy` must be mapped to the **partitionBy** field within $window or as part of an initial **$group** if the operation is bounded.
+* - **Data Joins:** Stream-to-Static joins must be implemented via **$lookup** or **$cachedLookup**. Stream-to-Stream joins are currently out-of-scope for single processors and should be handled via source-level merging or multiple processors.
+* - **Output Branching:** If the logic requires "Side Outputs" or "Splitting," you must implement **Multiple Linear Processors** reading from the same source topic.
 
 ## Tier Selection
 
